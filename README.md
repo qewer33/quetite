@@ -55,14 +55,6 @@ pub enum Token {
     LesserEquals,
     // symbols
     LParen,
-The parser is implemented as a straightforward recursive descent parser.
-
-### Grammer
-
-```js
-expression     → equality ;
-equality       → comparison ( ( "!=" | "==" ) comparison )* ;
-comparison     → term
     RParen,
     LBracket,
     RBracket,
@@ -79,7 +71,15 @@ comparison     → term
 ```
 
 ## Parser
- ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+
+The parser is implemented as a straightforward recursive descent parser.
+
+### Grammer
+
+```js
+expression     → equality ;
+equality       → comparison ( ( "!=" | "==" ) comparison )* ;
+comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term           → factor ( ( "-" | "+" ) factor )* ;
 factor         → unary ( ( "/" | "*" | "**" ) unary )* ;
 unary          → ( "!" | "-" ) unary
