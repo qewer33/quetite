@@ -1,8 +1,8 @@
 sq(n) = n*n
 
-main() = do
+main() do
     a = sq(10)
-    b = true;
+    b = true
 
     # this is a comment
 

@@ -1,0 +1,518 @@
+pub mod cursor;
+pub mod token;
+
+use crate::lexer::cursor::Cursor;
+use crate::lexer::token::{KEYWORDS, Token, TokenKind};
+
+pub struct Lexer {
+    /// The source code as a Vec<char>
+    src: Vec<char>,
+    /// Index of the current character
+    curr: usize,
+    /// Start of the current token being parsed
+    start: usize,
+    /// Current cursor location
+    cursor: Cursor,
+}
+
+impl Lexer {
+    pub fn new(src: String) -> Self {
+        Self {
+            src: src.chars().collect(),
+            curr: 0,
+            start: 0,
+            cursor: Cursor::new(),
+        }
+    }
+
+    pub fn tokenize(&mut self) -> Vec<Token> {
+        let mut tokens: Vec<Token> = Vec::new();
+
+        loop {
+            if self.is_at_end() {
+                break;
+            }
+
+            // Scan current char and identify token
+            self.start = self.curr;
+            let kind = self.scan_char();
+
+            // Get lexeme of the identified token
+            let lexeme = self.get_lexeme();
+
+            // Build token
+            if let Some(kind) = kind {
+                let token = Token::new(kind, lexeme, self.cursor.clone());
+                tokens.push(token);
+            }
+        }
+
+        tokens.push(Token::new(TokenKind::EOF, "".into(), self.cursor.clone()));
+        tokens
+    }
+
+    fn scan_char(&mut self) -> Option<TokenKind> {
+        let c = self.current();
+
+        let token = match c {
+            // Types
+            '"' => {
+                self.next();
+                let str = self.consume_until('"');
+                self.next();
+                self.next();
+                Some(TokenKind::Str(str))
+            }
+            // Assign
+            '=' => {
+                if self.consume('=') {
+                    self.next();
+                    return Some(TokenKind::Equals);
+                }
+
+                self.next();
+                Some(TokenKind::Assign)
+            }
+            // Arithmetic
+            '+' => {
+                if self.consume('=') {
+                    self.next();
+                    return Some(TokenKind::AddAssign);
+                } else if self.consume('+') {
+                    self.next();
+                    return Some(TokenKind::Incr);
+                }
+
+                self.next();
+                Some(TokenKind::Add)
+            }
+            '-' => {
+                if self.consume('=') {
+                    self.next();
+                    return Some(TokenKind::SubAssign);
+                } else if self.consume('-') {
+                    self.next();
+                    return Some(TokenKind::Decr);
+                }
+
+                self.next();
+                Some(TokenKind::Sub)
+            }
+            '*' => {
+                if self.consume('*') {
+                    self.next();
+                    return Some(TokenKind::Pow);
+                }
+
+                self.next();
+                Some(TokenKind::Mult)
+            }
+
+            '/' => {
+                self.next();
+                Some(TokenKind::Div)
+            }
+            // Bool ops
+            '<' => {
+                if self.consume('=') {
+                    self.next();
+                    return Some(TokenKind::LesserEquals);
+                }
+
+                self.next();
+                Some(TokenKind::Lesser)
+            }
+            '>' => {
+                if self.consume('=') {
+                    self.next();
+                    return Some(TokenKind::GreaterEquals);
+                }
+
+                self.next();
+                Some(TokenKind::Greater)
+            }
+            '!' => {
+                if self.consume('=') {
+                    self.next();
+                    return Some(TokenKind::NotEquals);
+                }
+
+                self.next();
+                Some(TokenKind::Not)
+            }
+            // Symbols
+            '(' => {
+                self.next();
+                Some(TokenKind::LParen)
+            }
+            ')' => {
+                self.next();
+                Some(TokenKind::RParen)
+            }
+            '[' => {
+                self.next();
+                Some(TokenKind::LBracket)
+            }
+            ']' => {
+                self.next();
+                Some(TokenKind::RBracket)
+            }
+            '{' => {
+                self.next();
+                Some(TokenKind::LBrace)
+            }
+            '}' => {
+                self.next();
+                Some(TokenKind::RBrace)
+            }
+            ',' => {
+                self.next();
+                Some(TokenKind::Comma)
+            }
+            '.' => {
+                self.next();
+                Some(TokenKind::Dot)
+            }
+            // Other
+            '\n' => {
+                self.next();
+                Some(TokenKind::EOL)
+            }
+            '#' => {
+                self.next();
+                let _comment = self.consume_until('\n');
+                self.next();
+                None
+            }
+            ' ' => {
+                self.next();
+                None
+            }
+            _ => {
+                // Check types
+                if let Some(bool) = self.check_bool() {
+                    self.next();
+                    return Some(TokenKind::Bool(bool));
+                }
+
+                if let Some(num) = self.check_num() {
+                    self.next();
+                    return Some(TokenKind::Num(num));
+                }
+
+                // Check keywords, assume identifiers if it doesn't match any
+                let mut str = String::new();
+
+                loop {
+                    str.push(self.current());
+
+                    if !self.peek().is_alphanumeric() {
+                        break;
+                    }
+                    self.next();
+                }
+
+                self.next();
+                if KEYWORDS.contains(&str.as_str()) {
+                    return Some(TokenKind::Keyword(str));
+                }
+                Some(TokenKind::Identifier(str))
+            }
+        };
+
+        token
+    }
+
+    // Type checks
+
+    fn check_bool(&mut self) -> Option<bool> {
+        if self.consume_str("true") {
+            return Some(true);
+        } else if self.consume_str("false") {
+            return Some(false);
+        }
+        None
+    }
+
+    fn check_num(&mut self) -> Option<String> {
+        if self.current().is_numeric() {
+            let mut num = String::new();
+
+            loop {
+                num.push(self.current());
+
+                if !self.peek().is_numeric() {
+                    break;
+                }
+                self.next();
+            }
+
+            return Some(num);
+        }
+        None
+    }
+
+    // Iter utils
+
+    fn current(&self) -> char {
+        self.src[self.curr]
+    }
+
+    fn next(&mut self) -> char {
+        // Advance cursor
+        if self.current() == '\n' {
+            self.cursor.next_line();
+        } else {
+            self.cursor.next_col();
+        }
+
+        // Advance index
+        self.curr += 1;
+        if self.is_at_end() {
+            return ' ';
+        }
+
+        self.src[self.curr]
+    }
+
+    fn peek(&self) -> char {
+        if self.is_at_end() {
+            return ' ';
+        }
+
+        self.src[self.curr + 1]
+    }
+
+    fn consume(&mut self, c: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+
+        if c == self.src[self.curr + 1] {
+            self.next();
+            return true;
+        }
+        false
+    }
+
+    fn consume_str(&mut self, s: &str) -> bool {
+        let len = s.len();
+
+        if self.curr + len > self.src.len() {
+            return false;
+        }
+
+        let slice: String = self.src[self.curr..self.curr + len].iter().collect();
+        if slice == s {
+            self.curr += len;
+            return true;
+        }
+
+        false
+    }
+
+    fn consume_until(&mut self, c: char) -> String {
+        let mut out = String::new();
+
+        loop {
+            out.push(self.current());
+
+            if self.peek() == c {
+                break;
+            }
+            self.next();
+        }
+
+        out
+    }
+
+    fn get_lexeme(&self) -> String {
+        if self.is_at_end() {
+            return "".into();
+        }
+
+        let len = self.curr - self.start;
+        self.src[self.start..self.start + len]
+            .iter()
+            .map(|&c| c as char)
+            .collect()
+    }
+
+    fn is_at_end(&self) -> bool {
+        self.curr == self.src.len()
+    }
+}
+
+// Unit tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tokens(src: &str) -> Vec<TokenKind> {
+        let mut lx = Lexer::new(src.to_string());
+        lx.tokenize()
+            .iter()
+            .map(|token| token.kind.clone())
+            .collect()
+    }
+
+    #[test]
+    fn empty_input() {
+        assert_eq!(tokens(""), vec![TokenKind::EOF]);
+    }
+
+    #[test]
+    fn simple_assign() {
+        assert_eq!(
+            tokens("a = 10\n"),
+            vec![
+                TokenKind::Identifier("a".into()),
+                TokenKind::Assign,
+                TokenKind::Num("10".into()),
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn call_with_arg() {
+        assert_eq!(
+            tokens("print(a)\n"),
+            vec![
+                TokenKind::Identifier("print".into()),
+                TokenKind::LParen,
+                TokenKind::Identifier("a".into()),
+                TokenKind::RParen,
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn function_def_line() {
+        assert_eq!(
+            tokens("sq(n) = n*n\n"),
+            vec![
+                TokenKind::Identifier("sq".into()),
+                TokenKind::LParen,
+                TokenKind::Identifier("n".into()),
+                TokenKind::RParen,
+                TokenKind::Assign,
+                TokenKind::Identifier("n".into()),
+                TokenKind::Mult,
+                TokenKind::Identifier("n".into()),
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn if_block_skeleton() {
+        assert_eq!(
+            tokens("if a == 100 do\nend\n"),
+            vec![
+                TokenKind::Keyword("if".into()),
+                TokenKind::Identifier("a".into()),
+                TokenKind::Equals,
+                TokenKind::Num("100".into()),
+                TokenKind::Keyword("do".into()),
+                TokenKind::EOL,
+                TokenKind::Keyword("end".into()),
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn string_literal() {
+        assert_eq!(
+            tokens("print(\"poggers\")\n"),
+            vec![
+                TokenKind::Identifier("print".into()),
+                TokenKind::LParen,
+                TokenKind::Str("poggers".into()),
+                TokenKind::RParen,
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn two_char_ops() {
+        assert_eq!(
+            tokens("a!=b\nc>=d\ne<=f\n"),
+            vec![
+                TokenKind::Identifier("a".into()),
+                TokenKind::NotEquals,
+                TokenKind::Identifier("b".into()),
+                TokenKind::EOL,
+                TokenKind::Identifier("c".into()),
+                TokenKind::GreaterEquals,
+                TokenKind::Identifier("d".into()),
+                TokenKind::EOL,
+                TokenKind::Identifier("e".into()),
+                TokenKind::LesserEquals,
+                TokenKind::Identifier("f".into()),
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn blank_lines() {
+        assert_eq!(
+            tokens("\n\n"),
+            vec![TokenKind::EOL, TokenKind::EOL, TokenKind::EOF]
+        );
+    }
+
+    #[test]
+    fn string_at_eof() {
+        assert_eq!(
+            tokens("print(\"x\")"),
+            vec![
+                TokenKind::Identifier("print".into()),
+                TokenKind::LParen,
+                TokenKind::Str("x".into()),
+                TokenKind::RParen,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn comment_then_identifier() {
+        // Assumes you EMIT a Comment token and then an EOL after it.
+        assert_eq!(
+            tokens("# this is a comment\nx\n"),
+            vec![
+                TokenKind::EOL,
+                TokenKind::Identifier("x".into()),
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+
+    #[test]
+    fn keywords_vs_identifiers() {
+        assert_eq!(
+            tokens("do end if print dox\n"),
+            vec![
+                TokenKind::Keyword("do".into()),
+                TokenKind::Keyword("end".into()),
+                TokenKind::Keyword("if".into()),
+                TokenKind::Identifier("print".into()),
+                TokenKind::Identifier("dox".into()),
+                TokenKind::EOL,
+                TokenKind::EOF
+            ]
+        );
+    }
+}
