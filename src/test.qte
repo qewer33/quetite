@@ -1,0 +1,18 @@
+print "begin"
+
+var a = 20
+a = 15
+
+do 
+    print a
+    do
+        var b = 20
+        print a
+        print b
+    end
+    print a
+end
+
+print "end"
+
+

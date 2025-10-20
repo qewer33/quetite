@@ -23,67 +23,26 @@ main()
 
 # Implementation
 
+The queitite interpreter is a 3 stage interpreter with a Lexer that tokenizes the source code, a Parser that parses the tokens into an AST (Abstract Syntax Tree) and an Evaluator that walks the AST and executes it.
+
 ## Lexer
 
-### Tokens
+The lexer is implemented as a simple tokenizer.
 
-```rs
-pub enum Token {
-    // types
-    Num(String),
-    Bool(bool),
-    Str(String),
-    // assign
-    Assign,
-    AddAssign,
-    SubAssign,
-    Incr,
-    Decr,
-    // arithmetic
-    Add,
-    Sub,
-    Mult,
-    Div,
-    Pow,
-    // bool ops
-    Not,
-    Equals,
-    NotEquals,
-    Greater,
-    GreaterEquals,
-    Lesser,
-    LesserEquals,
-    // symbols
-    LParen,
-    RParen,
-    LBracket,
-    RBracket,
-    LBrace,
-    RBrace,
-    Comma,
-    Dot,
-    // other
-    Keyword(String),
-    Identifier(String),
-    EOL,
-    EOF
-}
-```
+Run the interpreter with the `--dump-tokens` flag to see the token output of a source file without executing it.
+
+For more information, see the README.md file inside src/lexer.
 
 ## Parser
 
-The parser is implemented as a straightforward recursive descent parser.
+The parser is implemented as a recursive descent parser.
 
-### Grammer
+Run the interpreter with the `--dump-ast` flag to see the AST output of a source file without executing it.
 
-```js
-expression     → equality ;
-equality       → comparison ( ( "!=" | "==" ) comparison )* ;
-comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-term           → factor ( ( "-" | "+" ) factor )* ;
-factor         → unary ( ( "/" | "*" | "**" ) unary )* ;
-unary          → ( "!" | "-" ) unary
-               | primary ;
-primary        → NUMBER | STRING | "true" | "false" | "nil"
-               | "(" expression ")" ;
-```
+For more information, see the README.md file inside src/parser.
+
+## Evaluator
+
+The evaluator is implemented as a tree-walk interpreter.
+
+For more information, see the README.md file inside src/evaluator.

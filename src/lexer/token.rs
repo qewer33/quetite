@@ -1,24 +1,26 @@
+use strum::EnumDiscriminants;
+
 use crate::lexer::cursor::Cursor;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, EnumDiscriminants)]
 pub enum TokenKind {
-    // types
+    // Literals
     Num(String),
     Bool(bool),
     Str(String),
-    // assign
+    // Assign
     Assign,
     AddAssign,
     SubAssign,
     Incr,
     Decr,
-    // arithmetic
+    // Arithmetic
     Add,
     Sub,
     Mult,
     Div,
     Pow,
-    // bool ops
+    // Boolean
     Not,
     Equals,
     NotEquals,
@@ -26,7 +28,7 @@ pub enum TokenKind {
     GreaterEquals,
     Lesser,
     LesserEquals,
-    // symbols
+    // Symbols
     LParen,
     RParen,
     LBracket,
@@ -35,7 +37,7 @@ pub enum TokenKind {
     RBrace,
     Comma,
     Dot,
-    // other
+    // Other
     Keyword(KeywordKind),
     Identifier(String),
     NULL,
@@ -47,7 +49,7 @@ use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeywordKind {
-    // core
+    // Core
     Do,
     End,
     If,
@@ -56,7 +58,9 @@ pub enum KeywordKind {
     Return,
     Use,
     KSelf,
-    // reserved
+    Print,
+    Var,
+    // Reserved
     Fn,
     Obj,
     New,
@@ -75,6 +79,8 @@ impl ToString for KeywordKind {
             KeywordKind::Return => "return",
             KeywordKind::Use => "use",
             KeywordKind::KSelf => "self",
+            KeywordKind::Print => "print",
+            KeywordKind::Var => "var",
 
             KeywordKind::Fn => "fn",
             KeywordKind::Obj => "obj",
@@ -99,6 +105,8 @@ impl FromStr for KeywordKind {
             "return" => Ok(KeywordKind::Return),
             "use" => Ok(KeywordKind::Use),
             "self" => Ok(KeywordKind::KSelf),
+            "print" => Ok(KeywordKind::Print),
+            "var" => Ok(KeywordKind::Var),
 
             "fn" => Ok(KeywordKind::Fn),
             "obj" => Ok(KeywordKind::Obj),

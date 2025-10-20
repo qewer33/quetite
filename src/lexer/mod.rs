@@ -49,6 +49,11 @@ impl Lexer {
             }
         }
 
+        if let Some(token) = tokens.last() {
+            if token.kind != TokenKind::EOL {
+                tokens.push(Token::new(TokenKind::EOL, "".into(), self.cursor.clone()));
+            }
+        }
         tokens.push(Token::new(TokenKind::EOF, "".into(), self.cursor.clone()));
         tokens
     }
@@ -176,17 +181,37 @@ impl Lexer {
                 Some(TokenKind::Dot)
             }
             // Other
-            '\n' => {
+            '\r' => {
+                // Handle Windows CRLF as a single EOL
+                if self.peek() == '\n' {
+                    self.next();
+                }
+                // Collapse any following \n\n...
+                while self.peek() == '\n' {
+                    self.next();
+                }
                 self.next();
                 Some(TokenKind::EOL)
             }
+            '\n' => {
+                // Collapse \n+
+                while self.peek() == '\n' {
+                    self.next();
+                }
+                self.next();
+                Some(TokenKind::EOL)
+            }
+
             '#' => {
                 self.next();
                 let _comment = self.consume_until('\n');
+                while self.peek() == '\n' {
+                    self.next();
+                }
                 self.next();
                 None
             }
-            ' ' => {
+            ' ' | '\t' => {
                 self.next();
                 None
             }
@@ -278,7 +303,7 @@ impl Lexer {
     }
 
     fn peek(&self) -> char {
-        if self.is_at_end() {
+        if self.curr + 1 >= self.src.len() {
             return ' ';
         }
 
@@ -286,7 +311,7 @@ impl Lexer {
     }
 
     fn consume(&mut self, c: char) -> bool {
-        if self.is_at_end() {
+        if self.curr + 1 >= self.src.len() {
             return false;
         }
 
@@ -297,16 +322,21 @@ impl Lexer {
         false
     }
 
+    // TODO: check this
     fn consume_str(&mut self, s: &str) -> bool {
-        let len = s.len();
+        let s_chars: Vec<char> = s.chars().collect();
+        let needed = s_chars.len();
+        let end = self.curr + needed;
 
-        if self.curr + len > self.src.len() {
+        if end > self.src.len() {
             return false;
         }
 
-        let slice: String = self.src[self.curr..self.curr + len].iter().collect();
-        if slice == s {
-            self.curr += len;
+        if self.src[self.curr..end] == s_chars[..] {
+            // Advance to the last matched char (caller will do one `next()` after)
+            for _ in 0..needed.saturating_sub(1) {
+                self.next();
+            }
             return true;
         }
 

@@ -11,19 +11,19 @@ impl Cursor {
         Cursor { line: 0, col: 0 }
     }
 
-    /// Sets line and column
+    /// Set line and column
     pub fn set(&mut self, line: usize, col: usize) {
         self.line = line;
         self.col = col;
     }
 
-    /// Advances one line and sets column to 0
+    /// Advance one line and sets column to 0
     pub fn next_line(&mut self) {
         self.line += 1;
         self.col = 0;
     }
 
-    /// Advances one column
+    /// Advance one column
     pub fn next_col(&mut self) {
         self.col += 1;
     }
