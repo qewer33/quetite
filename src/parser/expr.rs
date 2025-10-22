@@ -1,11 +1,14 @@
-use crate::lexer::{cursor::Cursor, token::TokenKind};
+use crate::lexer::{
+    cursor::Cursor,
+    token::{KeywordKind, TokenKind},
+};
 
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Literal(LiteralType),
     Assign {
         name: String,
-        val: Box<Expr>
+        val: Box<Expr>,
     },
     Binary {
         left: Box<Expr>,
@@ -19,7 +22,12 @@ pub enum ExprKind {
         op: UnaryOp,
         right: Box<Expr>,
     },
-    Var(String)
+    Logical {
+        left: Box<Expr>,
+        op: LogicalOp,
+        right: Box<Expr>,
+    },
+    Var(String),
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +50,7 @@ pub enum OpFromTokenError {
     NotUnary(&'static str),
     NotBinary(&'static str),
     NotLiteral(&'static str),
+    NotLogical(&'static str),
     BadNumber(String),
 }
 
@@ -73,12 +82,43 @@ impl TryFrom<&TokenKind> for UnaryOp {
 }
 
 #[derive(Debug, Clone)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
+impl TryFrom<&TokenKind> for LogicalOp {
+    type Error = OpFromTokenError;
+
+    fn try_from(t: &TokenKind) -> Result<Self, Self::Error> {
+        let op = match t {
+            TokenKind::Keyword(kind) => match kind {
+                KeywordKind::And => LogicalOp::And,
+                KeywordKind::Or => LogicalOp::Or,
+                _ => {
+                    return Err(OpFromTokenError::NotLogical(
+                        "expected logical operator token",
+                    ));
+                }
+            },
+            _ => {
+                return Err(OpFromTokenError::NotLogical(
+                    "expected logical operator token",
+                ));
+            }
+        };
+        Ok(op)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum BinaryOp {
     // Arithmetic
     Add,
     Sub,
     Mult,
     Div,
+    Mod,
     Pow,
     // Boolean
     Equals,
@@ -99,6 +139,7 @@ impl TryFrom<&TokenKind> for BinaryOp {
             TokenKind::Sub => BinaryOp::Sub,
             TokenKind::Mult => BinaryOp::Mult,
             TokenKind::Div => BinaryOp::Div,
+            TokenKind::Mod => BinaryOp::Mod,
             TokenKind::Pow => BinaryOp::Pow,
             // Equality / comparison
             TokenKind::Equals => BinaryOp::Equals,

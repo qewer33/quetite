@@ -8,7 +8,7 @@ use crate::{
         token::{KeywordKind, Token, TokenKind, TokenKindDiscriminants},
     },
     parser::{
-        expr::{BinaryOp, Expr, ExprKind, LiteralType, UnaryOp},
+        expr::{BinaryOp, Expr, ExprKind, LiteralType, LogicalOp, UnaryOp},
         parse_err::{ParseErr, ParseResult},
         stmt::{Stmt, StmtKind},
     },
@@ -57,13 +57,13 @@ impl Parser {
 
     fn declr(&mut self) -> ParseResult<Stmt> {
         if self.match_keyword(KeywordKind::Var) {
-            return self.var_declr();
+            return self.var_declr(true);
         }
 
         self.stmt()
     }
 
-    fn var_declr(&mut self) -> ParseResult<Stmt> {
+    fn var_declr(&mut self, expect_eol: bool) -> ParseResult<Stmt> {
         let ident = self.consume(TokenKindDiscriminants::Identifier, "Expected variable name")?;
         let name = if let TokenKind::Identifier(str) = ident.kind {
             str
@@ -76,10 +76,12 @@ impl Parser {
             init = Some(self.expr()?);
         }
 
-        self.consume(
-            TokenKindDiscriminants::EOL,
-            "Expected EOL after variable declaration",
-        );
+        if expect_eol {
+            self.consume(
+                TokenKindDiscriminants::EOL,
+                "Expected EOL after variable declaration",
+            );
+        }
         Ok(Stmt::new(
             StmtKind::Var { name, init },
             self.previous().cursor,
@@ -93,6 +95,15 @@ impl Parser {
         if self.match_keyword(KeywordKind::Do) {
             return self.block_stmt();
         }
+        if self.match_keyword(KeywordKind::If) {
+            return self.if_stmt();
+        }
+        if self.match_keyword(KeywordKind::While) {
+            return self.while_stmt();
+        }
+        if self.match_keyword(KeywordKind::For) {
+            return self.for_stmt();
+        }
 
         self.expr_stmt()
     }
@@ -104,6 +115,102 @@ impl Parser {
             "expected '\\n' after expression",
         )?;
         Ok(Stmt::new(StmtKind::Expr(expr), self.previous().cursor))
+    }
+
+    fn if_stmt(&mut self) -> ParseResult<Stmt> {
+        let condition = self.expr()?;
+
+        let then_branch = Box::new(self.stmt()?);
+        let mut else_branch: Option<Box<Stmt>> = None;
+        if self.match_keyword(KeywordKind::Else) {
+            else_branch = Some(Box::new(self.stmt()?));
+        }
+
+        Ok(Stmt::new(
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            },
+            self.previous().cursor,
+        ))
+    }
+
+    fn while_stmt(&mut self) -> ParseResult<Stmt> {
+        let condition = self.expr()?;
+        let body = self.stmt()?;
+
+        Ok(Stmt::new(
+            StmtKind::While {
+                condition,
+                body: Box::new(body),
+            },
+            self.previous().cursor,
+        ))
+    }
+
+    fn for_stmt(&mut self) -> ParseResult<Stmt> {
+        // INIT (optional)
+        let init: Option<Stmt> = if self.check_keyword(KeywordKind::While)
+            || self.check_keyword(KeywordKind::Do)
+            || self.check_keyword(KeywordKind::Step)
+        {
+            None
+        } else if self.match_keyword(KeywordKind::Var) {
+            Some(self.var_declr(false)?)
+        } else {
+            let e = self.assignment()?; // or expr(); but assignment is fine/highest you need
+            Some(Stmt::new(StmtKind::Expr(e), self.previous().cursor))
+        };
+
+        // CONDITION (optional)
+        let condition = if self.match_keyword(KeywordKind::While) {
+            self.assignment()? // parse the expression after 'while'
+        } else {
+            Expr::new(
+                ExprKind::Literal(LiteralType::Bool(true)),
+                self.previous().cursor,
+            )
+        };
+
+        // INCREMENT (optional)
+        let incr: Option<Expr> = if self.match_keyword(KeywordKind::Step) {
+            Some(self.assignment()?)
+        } else {
+            None
+        };
+
+        // BODY
+        self.consume_keyword(KeywordKind::Do, "expected 'do' before loop body")?;
+        let mut body = self.block_stmt()?;
+
+        // Desugar: { init; while (condition) { body; incr; } }
+        if let Some(e) = incr {
+            body = Stmt::new(
+                StmtKind::Block(vec![
+                    body,
+                    Stmt::new(StmtKind::Expr(e), self.previous().cursor),
+                ]),
+                self.previous().cursor,
+            );
+        }
+
+        let while_stmt = Stmt::new(
+            StmtKind::While {
+                condition,
+                body: Box::new(body),
+            },
+            self.previous().cursor,
+        );
+
+        if let Some(init_stmt) = init {
+            Ok(Stmt::new(
+                StmtKind::Block(vec![init_stmt, while_stmt]),
+                self.previous().cursor,
+            ))
+        } else {
+            Ok(while_stmt)
+        }
     }
 
     fn print_stmt(&mut self) -> ParseResult<Stmt> {
@@ -120,13 +227,18 @@ impl Parser {
 
         self.skip_eols();
 
-        while !self.check_keyword(KeywordKind::End) && !self.is_at_end() {
+        while !self.check_keyword(KeywordKind::End)
+            && !self.check_keyword(KeywordKind::Else)
+            && !self.is_at_end()
+        {
             statements.push(self.declr()?);
 
             self.skip_eols();
         }
 
-        self.consume_keyword(KeywordKind::End, "Expected closing \"do\" after block");
+        if !self.check_keyword(KeywordKind::Else) {
+            self.consume_keyword(KeywordKind::End, "Expected closing \"do\" after block");
+        }
         Ok(Stmt::new(
             StmtKind::Block(statements),
             self.previous().cursor,
@@ -140,7 +252,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> ParseResult<Expr> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if self.match_tokens(vec![TokenKindDiscriminants::Assign]) {
             let eq = self.previous();
@@ -157,6 +269,40 @@ impl Parser {
             }
 
             return Err(ParseErr::new("Invalid assignment target".into()));
+        }
+
+        Ok(expr)
+    }
+
+    fn or(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.and()?;
+
+        while self.match_keyword(KeywordKind::Or) {
+            let op = LogicalOp::try_from(&self.previous().kind).unwrap();
+            let right = self.and()?;
+            expr.kind = ExprKind::Logical {
+                left: Box::new(expr.clone()),
+                op,
+                right: Box::new(right),
+            };
+            expr.cursor = self.previous().cursor;
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.equality()?;
+
+        while self.match_keyword(KeywordKind::And) {
+            let op = LogicalOp::try_from(&self.previous().kind).unwrap();
+            let right = self.equality()?;
+            expr.kind = ExprKind::Logical {
+                left: Box::new(expr.clone()),
+                op,
+                right: Box::new(right),
+            };
+            expr.cursor = self.previous().cursor;
         }
 
         Ok(expr)
@@ -229,6 +375,7 @@ impl Parser {
         while self.match_tokens(vec![
             TokenKindDiscriminants::Div,
             TokenKindDiscriminants::Mult,
+            TokenKindDiscriminants::Mod,
             TokenKindDiscriminants::Pow,
         ]) {
             let op = BinaryOp::try_from(&self.previous().kind).unwrap();
@@ -265,10 +412,12 @@ impl Parser {
 
     fn primary(&mut self) -> ParseResult<Expr> {
         if self.match_tokens(vec![TokenKindDiscriminants::Bool]) {
-            return Ok(Expr::new(
-                ExprKind::Literal(LiteralType::Bool(true)),
-                self.previous().cursor,
-            ));
+            if let TokenKind::Bool(b) = self.previous().kind {
+                return Ok(Expr::new(
+                    ExprKind::Literal(LiteralType::Bool(b)),
+                    self.previous().cursor,
+                ));
+            }
         }
         if self.match_tokens(vec![TokenKindDiscriminants::NULL]) {
             return Ok(Expr::new(

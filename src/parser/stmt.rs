@@ -8,7 +8,16 @@ pub enum StmtKind {
         name: String,
         init: Option<Expr>
     },
-    Block(Vec<Stmt>)
+    Block(Vec<Stmt>),
+    If {
+        condition: Expr,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>
+    },
+    While {
+        condition: Expr,
+        body: Box<Stmt>
+    }
 }
 
 #[derive(Debug, Clone)]

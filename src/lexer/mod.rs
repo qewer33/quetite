@@ -114,10 +114,13 @@ impl Lexer {
                 self.next();
                 Some(TokenKind::Mult)
             }
-
             '/' => {
                 self.next();
                 Some(TokenKind::Div)
+            }
+            '%' => {
+                self.next();
+                Some(TokenKind::Mod)
             }
             // Bool ops
             '<' => {

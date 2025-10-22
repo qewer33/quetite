@@ -4,12 +4,12 @@ pub mod value;
 
 use crate::{
     evaluator::{
-        env::Env,
+        env::{Env, EnvPtr},
         runtime_err::{EvalResult, RuntimeErr},
         value::Value,
     },
     parser::{
-        expr::{BinaryOp, Expr, ExprKind, LiteralType, UnaryOp},
+        expr::{BinaryOp, Expr, ExprKind, LiteralType, LogicalOp, UnaryOp},
         stmt::{Stmt, StmtKind},
     },
     reporter::Reporter,
@@ -17,7 +17,7 @@ use crate::{
 
 pub struct Evaluator {
     pub src: Vec<Stmt>,
-    env: Env,
+    env: EnvPtr,
 }
 
 impl Evaluator {
@@ -47,6 +47,12 @@ impl Evaluator {
             StmtKind::Print(_) => self.eval_stmt_print(stmt),
             StmtKind::Var { name, init } => self.eval_stmt_var(stmt),
             StmtKind::Block(statements) => self.eval_stmt_block(stmt),
+            StmtKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.eval_stmt_if(stmt),
+            StmtKind::While { condition, body } => self.eval_stmt_while(stmt),
         }
     }
 
@@ -59,6 +65,37 @@ impl Evaluator {
         }
 
         panic!("Non-print statement passed to Evaluator::eval_stmt_print");
+    }
+
+    fn eval_stmt_if(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::If {
+            condition,
+            then_branch,
+            else_branch,
+        } = &stmt.kind
+        {
+            if self.eval_expr(condition)?.is_truthy() {
+                self.eval_stmt(&then_branch)?;
+            } else if let Some(stmt) = else_branch {
+                self.eval_stmt(stmt)?;
+            }
+
+            return Ok(());
+        }
+
+        panic!("Non-print statement passed to Evaluator::eval_stmt_print");
+    }
+
+    fn eval_stmt_while(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::While { condition, body } = &stmt.kind {
+            while self.eval_expr(condition)?.is_truthy() {
+                self.eval_stmt(body)?;
+            }
+
+            return Ok(());
+        }
+
+        panic!("Non-while statement passed to Evaluator::eval_stmt_while");
     }
 
     fn eval_stmt_expr(&mut self, stmt: &Stmt) -> EvalResult<()> {
@@ -79,7 +116,7 @@ impl Evaluator {
                 val = self.eval_expr(expr)?;
             }
 
-            self.env.define(name.clone(), val);
+            self.env.borrow_mut().define(name.clone(), val);
 
             return Ok(());
         }
@@ -91,7 +128,7 @@ impl Evaluator {
         if let StmtKind::Block(statements) = &stmt.kind {
             let prev = self.env.clone();
 
-            self.env = Env::with_enclosing(self.env.clone());
+            self.env = Env::enclosed(self.env.clone());
 
             for stmt in statements.iter() {
                 self.eval_stmt(stmt)?;
@@ -115,13 +152,14 @@ impl Evaluator {
             ExprKind::Literal(lit) => self.eval_expr_literal(expr),
             ExprKind::Var(name) => self.eval_expr_var(expr),
             ExprKind::Assign { name, val } => self.eval_expr_assign(expr),
+            ExprKind::Logical { left, op, right } => self.eval_expr_logical(expr),
         }
     }
 
     fn eval_expr_assign(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Assign { name, val } = &expr.kind {
             let val = self.eval_expr(val)?;
-            self.env.define(name.clone(), val.clone());
+            self.env.borrow_mut().assign(&name.clone(), val.clone())?;
             return Ok(val);
         }
 
@@ -130,10 +168,30 @@ impl Evaluator {
 
     fn eval_expr_var(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Var(name) = &expr.kind {
-            return Ok(self.env.get(name.clone())?);
+            return Ok(self.env.borrow_mut().get(&name.clone())?);
         }
 
         panic!("Non-var passed to Evaluator::eval_expr_var");
+    }
+
+    fn eval_expr_logical(&mut self, expr: &Expr) -> EvalResult<Value> {
+        if let ExprKind::Logical { left, op, right } = &expr.kind {
+            let left = self.eval_expr(left)?;
+
+            if let LogicalOp::Or = op {
+                if left.is_truthy() {
+                    return Ok(left);
+                }
+            } else {
+                if !left.is_truthy() {
+                    return Ok(left);
+                }
+            }
+
+            return Ok(self.eval_expr(right)?);
+        }
+
+        panic!("Non-logical passed to Evaluator::eval_expr_logical");
     }
 
     fn eval_expr_literal(&mut self, expr: &Expr) -> EvalResult<Value> {
@@ -195,6 +253,7 @@ impl Evaluator {
                 BinaryOp::Sub => Ok(Value::Num(left.check_num()? - right.check_num()?)),
                 BinaryOp::Mult => Ok(Value::Num(left.check_num()? * right.check_num()?)),
                 BinaryOp::Div => Ok(Value::Num(left.check_num()? / right.check_num()?)),
+                BinaryOp::Mod => Ok(Value::Num(left.check_num()? % right.check_num()?)),
                 BinaryOp::Pow => Ok(Value::Num(left.check_num()?.powf(right.check_num()?))),
                 BinaryOp::Equals => Ok(Value::Bool(left.is_equal(&right))),
                 BinaryOp::NotEquals => Ok(Value::Bool(!left.is_equal(&right))),

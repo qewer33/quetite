@@ -1,18 +1,3 @@
-print "begin"
-
-var a = 20
-a = 15
-
-do 
-    print a
-    do
-        var b = 20
-        print a
-        print b
-    end
+for var a = 0 while a < 10 step a = a + 1 do
     print a
 end
-
-print "end"
-
-
