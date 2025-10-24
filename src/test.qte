@@ -1,3 +1,8 @@
-for var a = 0 while a < 10 step a = a + 1 do
-    print a
+var PI = 3.14
+PI -= 2
+print PI
+
+for var i = 0 while i < 10 step i++ do
+    print i
 end
+

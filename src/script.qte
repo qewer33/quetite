@@ -10,6 +10,10 @@ main() do
         print "poggers"
     end
 
+    for var a = 0 while a < 10 step a = a + 1 do
+        print a
+    end
+
     print a
 end
 

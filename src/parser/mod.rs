@@ -3,28 +3,32 @@ pub mod parse_err;
 pub mod stmt;
 
 use crate::{
-    lexer::{
-        cursor::Cursor,
-        token::{KeywordKind, Token, TokenKind, TokenKindDiscriminants},
-    },
+    lexer::token::{KeywordKind, Token, TokenKind, TokenKindDiscriminants},
     parser::{
-        expr::{BinaryOp, Expr, ExprKind, LiteralType, LogicalOp, UnaryOp},
+        expr::{AssignOp, BinaryOp, Expr, ExprKind, LiteralType, LogicalOp, UnaryOp},
         parse_err::{ParseErr, ParseResult},
         stmt::{Stmt, StmtKind},
     },
     reporter::Reporter,
+    src::Src,
 };
 
-pub struct Parser {
+pub struct Parser<'a> {
+    /// Source code
+    src: &'a Src,
     /// Tokens to parse as a Vec
     tokens: Vec<Token>,
     /// Index of the current token
     curr: usize,
 }
 
-impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, curr: 0 }
+impl<'a> Parser<'a> {
+    pub fn new(src: &'a Src) -> Self {
+        Self {
+            src,
+            tokens: src.tokens.as_ref().expect("ecpected tokens").clone(),
+            curr: 0,
+        }
     }
 
     pub fn parse(&mut self) -> Option<Vec<Stmt>> {
@@ -41,7 +45,7 @@ impl Parser {
                     self.skip_eols();
                 }
                 Err(err) => {
-                    Reporter::error(&err.msg);
+                    Reporter::error_at(&err.msg, self.src, err.cursor);
                     self.synchronize();
                     return None;
                 }
@@ -64,7 +68,7 @@ impl Parser {
     }
 
     fn var_declr(&mut self, expect_eol: bool) -> ParseResult<Stmt> {
-        let ident = self.consume(TokenKindDiscriminants::Identifier, "Expected variable name")?;
+        let ident = self.consume(TokenKindDiscriminants::Identifier, "expected variable name")?;
         let name = if let TokenKind::Identifier(str) = ident.kind {
             str
         } else {
@@ -79,8 +83,8 @@ impl Parser {
         if expect_eol {
             self.consume(
                 TokenKindDiscriminants::EOL,
-                "Expected EOL after variable declaration",
-            );
+                "expected '\\n' after variable declaration",
+            )?;
         }
         Ok(Stmt::new(
             StmtKind::Var { name, init },
@@ -237,7 +241,7 @@ impl Parser {
         }
 
         if !self.check_keyword(KeywordKind::Else) {
-            self.consume_keyword(KeywordKind::End, "Expected closing \"do\" after block");
+            self.consume_keyword(KeywordKind::End, "Expected closing \"do\" after block")?;
         }
         Ok(Stmt::new(
             StmtKind::Block(statements),
@@ -254,21 +258,37 @@ impl Parser {
     fn assignment(&mut self) -> ParseResult<Expr> {
         let expr = self.or()?;
 
-        if self.match_tokens(vec![TokenKindDiscriminants::Assign]) {
-            let eq = self.previous();
-            let val = self.assignment()?;
+        if self.match_tokens(vec![
+            TokenKindDiscriminants::Assign,
+            TokenKindDiscriminants::AddAssign,
+            TokenKindDiscriminants::SubAssign,
+            TokenKindDiscriminants::Incr,
+            TokenKindDiscriminants::Decr,
+        ]) {
+            let op = AssignOp::try_from(&self.previous().kind).unwrap();
+            let mut val = Expr {
+                kind: ExprKind::Literal(LiteralType::Num(1.0)),
+                cursor: self.current().cursor,
+            };
+            if self.previous().kind != TokenKind::Incr && self.previous().kind != TokenKind::Decr {
+                val = self.assignment()?;
+            }
 
             if let ExprKind::Var(name) = expr.kind {
                 return Ok(Expr::new(
                     ExprKind::Assign {
                         name,
+                        op,
                         val: Box::new(val),
                     },
                     self.previous().cursor,
                 ));
             }
 
-            return Err(ParseErr::new("Invalid assignment target".into()));
+            return Err(ParseErr::new(
+                "invalid assignment target".into(),
+                self.previous().cursor,
+            ));
         }
 
         Ok(expr)
@@ -377,6 +397,7 @@ impl Parser {
             TokenKindDiscriminants::Mult,
             TokenKindDiscriminants::Mod,
             TokenKindDiscriminants::Pow,
+            TokenKindDiscriminants::Nullish,
         ]) {
             let op = BinaryOp::try_from(&self.previous().kind).unwrap();
             let right = self.unary()?;
@@ -428,8 +449,8 @@ impl Parser {
         if self.match_tokens(vec![TokenKindDiscriminants::Num]) {
             if let TokenKind::Num(s) = self.previous().kind {
                 return Ok(Expr::new(
-                    ExprKind::Literal(LiteralType::Int(
-                        s.parse::<i64>()
+                    ExprKind::Literal(LiteralType::Num(
+                        s.parse::<f64>()
                             .map_err(|err| ParseErr::from(err).msg("invalid int literal".into()))?,
                     )),
                     self.previous().cursor,
@@ -463,10 +484,10 @@ impl Parser {
             }
         }
 
-        Err(ParseErr::new(format!(
-            "Expected expression at {:?}",
-            self.current().cursor,
-        )))
+        Err(ParseErr::new(
+            "expected expression".into(),
+            self.previous().cursor,
+        ))
     }
 
     // Util functions
@@ -497,11 +518,7 @@ impl Parser {
             return Ok(self.next());
         }
 
-        Err(ParseErr::new(format!(
-            "Syntax error at {:?}, {}",
-            self.current().cursor,
-            msg
-        )))
+        Err(ParseErr::new(msg.into(), self.current().cursor))
     }
 
     fn consume_multiple(
@@ -520,11 +537,7 @@ impl Parser {
             return Ok(self.next());
         }
 
-        Err(ParseErr::new(format!(
-            "Syntax error at {:?}, {}",
-            self.current().cursor,
-            msg
-        )))
+        Err(ParseErr::new(msg.into(), self.current().cursor))
     }
 
     fn consume_keyword(&mut self, keyword: KeywordKind, msg: &str) -> ParseResult<Token> {
@@ -532,11 +545,7 @@ impl Parser {
             return Ok(self.next());
         }
 
-        Err(ParseErr::new(format!(
-            "Syntax error at {:?}, {}",
-            self.current().cursor,
-            msg
-        )))
+        Err(ParseErr::new(msg.into(), self.current().cursor))
     }
 
     fn check(&self, token: TokenKindDiscriminants) -> bool {

@@ -1,8 +1,11 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::evaluator::{
-    runtime_err::{EvalResult, RuntimeErr},
-    value::Value,
+use crate::{
+    evaluator::{
+        runtime_err::{EvalResult, RuntimeErr},
+        value::Value,
+    },
+    lexer::cursor::Cursor,
 };
 
 pub type EnvPtr = Rc<RefCell<Env>>;
@@ -32,24 +35,30 @@ impl Env {
         self.values.insert(name, val);
     }
 
-    pub fn assign(&mut self, name: &str, val: Value) -> EvalResult<()> {
+    pub fn assign(&mut self, name: &str, val: Value, cursor: Cursor) -> EvalResult<()> {
         if self.values.contains_key(name) {
             self.values.insert(name.to_string(), val);
             return Ok(());
         }
         if let Some(ref parent) = self.enclosing {
-            return parent.borrow_mut().assign(name, val);
+            return parent.borrow_mut().assign(name, val, cursor);
         }
-        Err(RuntimeErr::new(format!("Undefined variable {}", name)))
+        Err(RuntimeErr::new(
+            format!("undefined variable '{}'", name),
+            cursor,
+        ))
     }
 
-    pub fn get(&self, name: &str) -> EvalResult<Value> {
+    pub fn get(&self, name: &str, cursor: Cursor) -> EvalResult<Value> {
         if let Some(val) = self.values.get(name) {
             return Ok(val.clone());
         }
         if let Some(ref parent) = self.enclosing {
-            return parent.borrow().get(name);
+            return parent.borrow().get(name, cursor);
         }
-        Err(RuntimeErr::new(format!("Undefined variable {}", name)))
+        Err(RuntimeErr::new(
+            format!("undefined variable '{}'", name),
+            cursor,
+        ))
     }
 }

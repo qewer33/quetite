@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-use crate::evaluator::value::Value;
+use crate::lexer::cursor::Cursor;
 
 pub type EvalResult<T> = std::result::Result<T, RuntimeErr>;
 
@@ -8,15 +8,21 @@ pub type EvalResult<T> = std::result::Result<T, RuntimeErr>;
 pub struct RuntimeErr {
     /// Error message
     pub msg: String,
+    /// Error location as a Cursor
+    pub cursor: Cursor,
 }
 
 impl RuntimeErr {
-    pub fn new(msg: String) -> Self {
-        Self { msg }
+    pub fn new(msg: String, cursor: Cursor) -> Self {
+        Self { msg, cursor }
     }
 
     pub fn msg(&mut self, msg: String) {
         self.msg = msg;
+    }
+
+    pub fn cursor(&mut self, cursor: Cursor) {
+        self.cursor = cursor;
     }
 }
 

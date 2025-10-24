@@ -8,6 +8,7 @@ pub enum ExprKind {
     Literal(LiteralType),
     Assign {
         name: String,
+        op: AssignOp,
         val: Box<Expr>,
     },
     Binary {
@@ -47,6 +48,7 @@ impl Expr {
 /// Errors for TryFrom mappings
 #[derive(Debug)]
 pub enum OpFromTokenError {
+    NotAssign(&'static str),
     NotUnary(&'static str),
     NotBinary(&'static str),
     NotLiteral(&'static str),
@@ -58,9 +60,31 @@ pub enum OpFromTokenError {
 pub enum LiteralType {
     Null,
     // Float(f64),
-    Int(i64),
+    Num(f64),
     Str(String),
     Bool(bool),
+}
+
+#[derive(Debug, Clone)]
+pub enum AssignOp {
+    Value,
+    Add,
+    Sub,
+}
+
+impl TryFrom<&TokenKind> for AssignOp {
+    type Error = OpFromTokenError;
+
+    fn try_from(t: &TokenKind) -> Result<Self, Self::Error> {
+        match t {
+            TokenKind::Assign => Ok(AssignOp::Value),
+            TokenKind::AddAssign => Ok(AssignOp::Add),
+            TokenKind::SubAssign => Ok(AssignOp::Sub),
+            TokenKind::Incr => Ok(AssignOp::Add),
+            TokenKind::Decr => Ok(AssignOp::Sub),
+            _ => Err(OpFromTokenError::NotAssign("expected assign operator token")),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +151,7 @@ pub enum BinaryOp {
     GreaterEquals,
     Lesser,
     LesserEquals,
+    Nullish,
 }
 
 impl TryFrom<&TokenKind> for BinaryOp {
@@ -148,6 +173,7 @@ impl TryFrom<&TokenKind> for BinaryOp {
             TokenKind::GreaterEquals => BinaryOp::GreaterEquals,
             TokenKind::Lesser => BinaryOp::Lesser,
             TokenKind::LesserEquals => BinaryOp::LesserEquals,
+            TokenKind::Nullish => BinaryOp::Nullish,
             _ => {
                 return Err(OpFromTokenError::NotBinary(
                     "expected binary operator token",

@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::evaluator::runtime_err::RuntimeErr;
+use crate::{evaluator::runtime_err::RuntimeErr, lexer::cursor::Cursor};
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -54,10 +54,13 @@ impl Value {
         }
     }
 
-    pub fn check_num(&self) -> Result<f64, RuntimeErr> {
+    pub fn check_num(&self, cursor: Cursor) -> Result<f64, RuntimeErr> {
         if let Value::Num(num) = self {
             return Ok(*num);
         }
-        Err(RuntimeErr::new(format!("Expected Num, found {:?}", self)))
+        Err(RuntimeErr::new(
+            format!("expected Num, found {:?}", self),
+            cursor,
+        ))
     }
 }

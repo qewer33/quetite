@@ -29,6 +29,7 @@ pub enum TokenKind {
     GreaterEquals,
     Lesser,
     LesserEquals,
+    Nullish,
     // Symbols
     LParen,
     RParen,

@@ -9,31 +9,34 @@ use crate::{
         value::Value,
     },
     parser::{
-        expr::{BinaryOp, Expr, ExprKind, LiteralType, LogicalOp, UnaryOp},
+        expr::{AssignOp, BinaryOp, Expr, ExprKind, LiteralType, LogicalOp, UnaryOp},
         stmt::{Stmt, StmtKind},
     },
     reporter::Reporter,
+    src::Src,
 };
 
-pub struct Evaluator {
-    pub src: Vec<Stmt>,
+pub struct Evaluator<'a> {
+    pub src: &'a Src,
+    ast: Vec<Stmt>,
     env: EnvPtr,
 }
 
-impl Evaluator {
-    pub fn new(src: Vec<Stmt>) -> Self {
+impl<'a> Evaluator<'a> {
+    pub fn new(src: &'a Src) -> Self {
         Self {
             src,
+            ast: src.ast.clone().expect("expected ast"),
             env: Env::new(),
         }
     }
 
     pub fn eval(&mut self) {
-        for stmt in self.src.clone().iter() {
+        for stmt in self.ast.clone().iter() {
             match self.eval_stmt(stmt) {
                 Ok(_) => {}
                 Err(err) => {
-                    Reporter::error(&err.msg);
+                    Reporter::error_at(&err.msg, self.src, err.cursor);
                 }
             }
         }
@@ -151,15 +154,33 @@ impl Evaluator {
             ExprKind::Unary { op, right } => self.eval_expr_unary(expr),
             ExprKind::Literal(lit) => self.eval_expr_literal(expr),
             ExprKind::Var(name) => self.eval_expr_var(expr),
-            ExprKind::Assign { name, val } => self.eval_expr_assign(expr),
+            ExprKind::Assign { name, op, val } => self.eval_expr_assign(expr),
             ExprKind::Logical { left, op, right } => self.eval_expr_logical(expr),
         }
     }
 
     fn eval_expr_assign(&mut self, expr: &Expr) -> EvalResult<Value> {
-        if let ExprKind::Assign { name, val } = &expr.kind {
-            let val = self.eval_expr(val)?;
-            self.env.borrow_mut().assign(&name.clone(), val.clone())?;
+        if let ExprKind::Assign { name, op, val } = &expr.kind {
+            let mut val = self.eval_expr(val)?;
+
+            if let Value::Num(mut num) = val {
+                let var_val = self.env.borrow_mut().get(name, expr.cursor)?;
+
+                if let Value::Num(var_num) = var_val {
+                    if let AssignOp::Add = op {
+                        num += var_num;
+                    }
+                    if let AssignOp::Sub = op {
+                        num = var_num - num;
+                    }
+
+                    val = Value::Num(num);
+                }
+            }
+
+            self.env
+                .borrow_mut()
+                .assign(&name.clone(), val.clone(), expr.cursor)?;
             return Ok(val);
         }
 
@@ -168,7 +189,7 @@ impl Evaluator {
 
     fn eval_expr_var(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Var(name) = &expr.kind {
-            return Ok(self.env.borrow_mut().get(&name.clone())?);
+            return Ok(self.env.borrow_mut().get(&name.clone(), expr.cursor)?);
         }
 
         panic!("Non-var passed to Evaluator::eval_expr_var");
@@ -198,7 +219,7 @@ impl Evaluator {
         if let ExprKind::Literal(literal) = &expr.kind {
             return match literal {
                 LiteralType::Null => Ok(Value::Null),
-                LiteralType::Int(i) => Ok(Value::Num(*i as f64)),
+                LiteralType::Num(i) => Ok(Value::Num(*i as f64)),
                 LiteralType::Bool(b) => Ok(Value::Bool(*b)),
                 LiteralType::Str(s) => Ok(Value::Str(s.clone())),
             };
@@ -221,7 +242,7 @@ impl Evaluator {
             let right = self.eval_expr(right)?;
 
             return match op {
-                UnaryOp::Negate => Ok(Value::Num(-right.check_num()?)),
+                UnaryOp::Negate => Ok(Value::Num(-right.check_num(expr.cursor)?)),
                 UnaryOp::Not => Ok(Value::Bool(!right.is_truthy())),
             };
         }
@@ -233,6 +254,8 @@ impl Evaluator {
         if let ExprKind::Binary { left, op, right } = &expr.kind {
             let left = self.eval_expr(left)?;
             let right = self.eval_expr(right)?;
+
+            let cursor = expr.cursor;
 
             return match op {
                 BinaryOp::Add => {
@@ -250,17 +273,42 @@ impl Evaluator {
 
                     return Ok(Value::Null);
                 }
-                BinaryOp::Sub => Ok(Value::Num(left.check_num()? - right.check_num()?)),
-                BinaryOp::Mult => Ok(Value::Num(left.check_num()? * right.check_num()?)),
-                BinaryOp::Div => Ok(Value::Num(left.check_num()? / right.check_num()?)),
-                BinaryOp::Mod => Ok(Value::Num(left.check_num()? % right.check_num()?)),
-                BinaryOp::Pow => Ok(Value::Num(left.check_num()?.powf(right.check_num()?))),
+                BinaryOp::Sub => Ok(Value::Num(
+                    left.check_num(cursor)? - right.check_num(cursor)?,
+                )),
+                BinaryOp::Mult => Ok(Value::Num(
+                    left.check_num(cursor)? * right.check_num(cursor)?,
+                )),
+                BinaryOp::Div => Ok(Value::Num(
+                    left.check_num(cursor)? / right.check_num(cursor)?,
+                )),
+                BinaryOp::Mod => Ok(Value::Num(
+                    left.check_num(cursor)? % right.check_num(cursor)?,
+                )),
+                BinaryOp::Pow => Ok(Value::Num(
+                    left.check_num(cursor)?.powf(right.check_num(cursor)?),
+                )),
                 BinaryOp::Equals => Ok(Value::Bool(left.is_equal(&right))),
                 BinaryOp::NotEquals => Ok(Value::Bool(!left.is_equal(&right))),
-                BinaryOp::Greater => Ok(Value::Bool(left.check_num()? > right.check_num()?)),
-                BinaryOp::GreaterEquals => Ok(Value::Bool(left.check_num()? >= right.check_num()?)),
-                BinaryOp::Lesser => Ok(Value::Bool(left.check_num()? < right.check_num()?)),
-                BinaryOp::LesserEquals => Ok(Value::Bool(left.check_num()? <= right.check_num()?)),
+                BinaryOp::Greater => Ok(Value::Bool(
+                    left.check_num(cursor)? > right.check_num(cursor)?,
+                )),
+                BinaryOp::GreaterEquals => Ok(Value::Bool(
+                    left.check_num(cursor)? >= right.check_num(cursor)?,
+                )),
+                BinaryOp::Lesser => Ok(Value::Bool(
+                    left.check_num(cursor)? < right.check_num(cursor)?,
+                )),
+                BinaryOp::LesserEquals => Ok(Value::Bool(
+                    left.check_num(cursor)? <= right.check_num(cursor)?,
+                )),
+                BinaryOp::Nullish => {
+                    if let Value::Null = left {
+                        return Ok(right);
+                    }
+
+                    return Ok(left);
+                }
             };
         }
 

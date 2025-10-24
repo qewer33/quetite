@@ -150,6 +150,15 @@ impl Lexer {
                 self.next();
                 Some(TokenKind::Not)
             }
+            '?' => {
+                if self.consume('?') {
+                    self.next();
+                    return Some(TokenKind::Nullish);
+                }
+
+                self.next();
+                None
+            }
             // Symbols
             '(' => {
                 self.next();
@@ -265,21 +274,56 @@ impl Lexer {
     }
 
     fn check_num(&mut self) -> Option<String> {
-        if self.current().is_numeric() {
-            let mut num = String::new();
+        if !self.current().is_numeric() {
+            return None;
+        }
 
-            loop {
+        let mut num = String::new();
+        let mut seen_dot = false;
+
+        // consume the first digit (current)
+        num.push(self.current());
+
+        loop {
+            let nxt = self.peek();
+
+            // more digits?
+            if nxt.is_numeric() {
+                self.next(); // move onto that digit
                 num.push(self.current());
-
-                if !self.peek().is_numeric() {
-                    break;
-                }
-                self.next();
+                continue;
             }
 
-            return Some(num);
+            // optional single '.' with a digit after it
+            if !seen_dot && nxt == '.' {
+                // ensure we have a digit after the dot
+                let after_dot = if self.curr + 2 < self.src.len() {
+                    self.src[self.curr + 2]
+                } else {
+                    ' '
+                };
+                if after_dot.is_numeric() {
+                    seen_dot = true;
+                    self.next(); // move onto '.'
+                    num.push('.');
+
+                    self.next(); // move onto first frac digit
+                    num.push(self.current());
+
+                    // consume remaining fractional digits
+                    while self.peek().is_numeric() {
+                        self.next();
+                        num.push(self.current());
+                    }
+                    continue;
+                }
+            }
+
+            // next char is not part of the number → stop WITHOUT advancing
+            break;
         }
-        None
+
+        Some(num)
     }
 
     // Iter utils

@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Cursor {
     /// Line number
     pub line: usize,
