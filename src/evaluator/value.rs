@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    evaluator::{Evaluator, runtime_err::RuntimeErr},
+    evaluator::{Evaluator, runtime_err::RuntimeEvent},
     lexer::cursor::Cursor,
 };
 
@@ -73,11 +73,11 @@ impl Value {
         }
     }
 
-    pub fn check_num(&self, cursor: Cursor) -> Result<f64, RuntimeErr> {
+    pub fn check_num(&self, cursor: Cursor) -> Result<f64, RuntimeEvent> {
         if let Value::Num(num) = self {
             return Ok(*num);
         }
-        Err(RuntimeErr::new(
+        Err(RuntimeEvent::error(
             format!("expected Num, found {:?}", self),
             cursor,
         ))

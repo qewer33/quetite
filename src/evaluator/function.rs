@@ -1,6 +1,9 @@
 use crate::{
     evaluator::{
-        env::{Env, EnvPtr}, value::{Callable, Value}, Evaluator
+        Evaluator,
+        env::{Env, EnvPtr},
+        runtime_err::RuntimeEvent,
+        value::{Callable, Value},
     },
     parser::stmt::{Stmt, StmtKind},
 };
@@ -8,7 +11,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Function {
     declr: Stmt,
-    closure: EnvPtr
+    closure: EnvPtr,
 }
 
 impl Function {
@@ -69,8 +72,8 @@ impl Callable for Function {
             match evaluator.eval_stmt_block(body, env) {
                 Ok(()) => return Value::Null,
                 Err(err) => {
-                    // The "error" here is actually the return value we wound back from Evaluator::eval_stmt_return
-                    if let Some(val) = err.return_val {
+                    // Catch the return value
+                    if let RuntimeEvent::Return(val) = err {
                         return val;
                     }
                     return Value::Null;

@@ -117,6 +117,17 @@ impl<'a> Parser<'a> {
             init = Some(self.expr()?);
         }
 
+        if self.check_keyword(KeywordKind::While) {
+            self.consume_keyword(
+                KeywordKind::While,
+                "expected 'while' after variable declaration",
+            )?;
+            return self.while_stmt(Some(Box::new(Stmt::new(
+                StmtKind::Var { name, init },
+                ident.cursor,
+            ))));
+        }
+
         if expect_eol {
             self.consume(
                 TokenKindDiscriminants::EOL,
@@ -189,6 +200,12 @@ impl<'a> Parser<'a> {
         if self.match_keyword(KeywordKind::Return) {
             return self.return_stmt();
         }
+        if self.match_keyword(KeywordKind::Break) {
+            return self.break_stmt();
+        }
+        if self.match_keyword(KeywordKind::Continue) {
+            return self.continue_stmt();
+        }
         if self.match_keyword(KeywordKind::Do) {
             return self.block_stmt();
         }
@@ -196,11 +213,13 @@ impl<'a> Parser<'a> {
             return self.if_stmt();
         }
         if self.match_keyword(KeywordKind::While) {
-            return self.while_stmt();
+            return self.while_stmt(None);
         }
+        /*
         if self.match_keyword(KeywordKind::For) {
             return self.for_stmt();
         }
+        */
 
         self.expr_stmt()
     }
@@ -233,19 +252,27 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn while_stmt(&mut self) -> ParseResult<Stmt> {
+    fn while_stmt(&mut self, declr: Option<Box<Stmt>>) -> ParseResult<Stmt> {
         let condition = self.expr()?;
+        let step: Option<Expr> = if self.match_keyword(KeywordKind::Step) {
+            Some(self.assignment()?)
+        } else {
+            None
+        };
         let body = self.stmt()?;
 
         Ok(Stmt::new(
             StmtKind::While {
+                declr,
                 condition,
                 body: Box::new(body),
+                step,
             },
             self.previous().cursor,
         ))
     }
 
+    /*
     fn for_stmt(&mut self) -> ParseResult<Stmt> {
         // INIT (optional)
         let init: Option<Stmt> = if self.check_keyword(KeywordKind::While)
@@ -309,6 +336,7 @@ impl<'a> Parser<'a> {
             Ok(while_stmt)
         }
     }
+    */
 
     fn print_stmt(&mut self) -> ParseResult<Stmt> {
         let val = self.expr()?;
@@ -331,6 +359,16 @@ impl<'a> Parser<'a> {
             "expected '\\n' after return value",
         )?;
         Ok(Stmt::new(StmtKind::Return(val), self.previous().cursor))
+    }
+
+    fn break_stmt(&mut self) -> ParseResult<Stmt> {
+        self.consume(TokenKindDiscriminants::EOL, "expected '\\n' after break")?;
+        Ok(Stmt::new(StmtKind::Break, self.previous().cursor))
+    }
+
+    fn continue_stmt(&mut self) -> ParseResult<Stmt> {
+        self.consume(TokenKindDiscriminants::EOL, "expected '\\n' after break")?;
+        Ok(Stmt::new(StmtKind::Continue, self.previous().cursor))
     }
 
     fn block_stmt(&mut self) -> ParseResult<Stmt> {

@@ -1,14 +1,4 @@
-fn makeCounter() do
-    var i = 0
-
-    fn count() do
-        i = i + 1
-        print i
-    end
-
-    return count
+var i = 0 while i < 10 step i++ do
+    print("test")
+    print("sus")
 end
-
-var counter = makeCounter() 
-counter()
-counter()

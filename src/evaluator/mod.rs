@@ -11,7 +11,7 @@ use crate::{
         env::{Env, EnvPtr},
         function::Function,
         natives::Natives,
-        runtime_err::{EvalResult, RuntimeErr},
+        runtime_err::{EvalResult, RuntimeErr, RuntimeEvent},
         value::Value,
     },
     parser::{
@@ -48,8 +48,15 @@ impl<'a> Evaluator<'a> {
             match self.eval_stmt(stmt) {
                 Ok(_) => {}
                 Err(err) => {
-                    Reporter::error_at(&err.msg, self.src, err.cursor);
-                    return;
+                    if let RuntimeEvent::Err(RuntimeErr {
+                        msg,
+                        cursor,
+                        note: _,
+                    }) = err
+                    {
+                        Reporter::error_at(&msg, self.src, cursor);
+                        return;
+                    }
                 }
             }
         }
@@ -62,6 +69,8 @@ impl<'a> Evaluator<'a> {
             StmtKind::Expr(_expr) => self.eval_stmt_expr(stmt),
             StmtKind::Print(_expr) => self.eval_stmt_print(stmt),
             StmtKind::Return(_expr) => self.eval_stmt_return(stmt),
+            StmtKind::Break => self.eval_stmt_break(stmt),
+            StmtKind::Continue => self.eval_stmt_continue(stmt),
             StmtKind::Var { name: _, init: _ } => self.eval_stmt_var(stmt),
             StmtKind::Block(_statements) => {
                 self.eval_stmt_block(stmt, Env::enclosed(self.env.clone()))
@@ -72,8 +81,10 @@ impl<'a> Evaluator<'a> {
                 else_branch: _,
             } => self.eval_stmt_if(stmt),
             StmtKind::While {
+                declr: _,
                 condition: _,
                 body: _,
+                step: _,
             } => self.eval_stmt_while(stmt),
             StmtKind::Fn {
                 name: _,
@@ -101,13 +112,28 @@ impl<'a> Evaluator<'a> {
                 val = self.eval_expr(expr)?;
             }
 
-            // This isn't actually and error but the return value itself
             // We're taking advantage of the ? operator here to unwind the stack
             // and return the value back to the call function
-            return Err(RuntimeErr::return_val(val));
+            return Err(RuntimeEvent::Return(val));
         }
 
         unreachable!("Non-return statement passed to Evaluator::eval_stmt_return");
+    }
+
+    fn eval_stmt_break(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::Break = &stmt.kind {
+            return Err(RuntimeEvent::Break);
+        }
+
+        unreachable!("Non-break statement passed to Evaluator::eval_stmt_break");
+    }
+
+    fn eval_stmt_continue(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::Continue = &stmt.kind {
+            return Err(RuntimeEvent::Continue);
+        }
+
+        unreachable!("Non-continue statement passed to Evaluator::eval_stmt_continue");
     }
 
     fn eval_stmt_if(&mut self, stmt: &Stmt) -> EvalResult<()> {
@@ -130,9 +156,33 @@ impl<'a> Evaluator<'a> {
     }
 
     fn eval_stmt_while(&mut self, stmt: &Stmt) -> EvalResult<()> {
-        if let StmtKind::While { condition, body } = &stmt.kind {
+        if let StmtKind::While {
+            declr,
+            condition,
+            step,
+            body,
+        } = &stmt.kind
+        {
+            if let Some(stmt) = declr {
+                self.eval_stmt(stmt)?;
+            }
+
             while self.eval_expr(condition)?.is_truthy() {
-                self.eval_stmt(body)?;
+                match self.eval_stmt(body) {
+                    Ok(_) => {}
+                    Err(err) if err.is_continue() => {
+                        if let Some(expr) = step {
+                            self.eval_expr(expr)?;
+                        }
+                        continue;
+                    }
+                    Err(err) if err.is_break() => break,
+                    Err(err) => return Err(err),
+                }
+
+                if let Some(expr) = step {
+                    self.eval_expr(expr)?;
+                }
             }
 
             return Ok(());
@@ -296,7 +346,7 @@ impl<'a> Evaluator<'a> {
 
             if let Value::Callable(c) = callee {
                 if args_values.len() != c.arity() {
-                    return Err(RuntimeErr::new(
+                    return Err(RuntimeEvent::error(
                         format!(
                             "functions expects {} arguments but got {}",
                             c.arity(),
@@ -307,7 +357,7 @@ impl<'a> Evaluator<'a> {
                 }
                 return Ok(c.call(self, args_values));
             }
-            return Err(RuntimeErr::new(
+            return Err(RuntimeEvent::error(
                 "can't call non-function".into(),
                 expr.cursor,
             ));

@@ -2,7 +2,43 @@ use std::{error::Error, fmt::Display};
 
 use crate::{evaluator::value::Value, lexer::cursor::Cursor};
 
-pub type EvalResult<T> = std::result::Result<T, RuntimeErr>;
+pub type EvalResult<T> = std::result::Result<T, RuntimeEvent>;
+
+#[derive(Debug)]
+pub enum RuntimeEvent {
+    Err(RuntimeErr),
+    Return(Value),
+    Break,
+    Continue,
+}
+
+impl RuntimeEvent {
+    pub fn error(msg: String, cursor: Cursor) -> Self {
+        RuntimeEvent::Err(RuntimeErr {
+            msg,
+            cursor,
+            note: None,
+        })
+    }
+
+    pub fn error_with_note(msg: String, note: String, cursor: Cursor) -> Self {
+        RuntimeEvent::Err(RuntimeErr {
+            msg,
+            cursor,
+            note: Some(note),
+        })
+    }
+
+    pub fn is_break(&self) -> bool {
+        matches!(self, RuntimeEvent::Break)
+    }
+    pub fn is_continue(&self) -> bool {
+        matches!(self, RuntimeEvent::Continue)
+    }
+    pub fn is_return(&self) -> bool {
+        matches!(self, RuntimeEvent::Return(_))
+    }
+}
 
 #[derive(Debug)]
 pub struct RuntimeErr {
@@ -12,21 +48,14 @@ pub struct RuntimeErr {
     pub cursor: Cursor,
     /// Friendly note for the user
     pub note: Option<String>,
-    /// For return statement
-    pub return_val: Option<Value>
 }
 
 impl RuntimeErr {
     pub fn new(msg: String, cursor: Cursor) -> Self {
-        Self { msg, cursor, note: None, return_val: None }
-    }
-
-    pub fn return_val(val: Value) -> Self {
         Self {
-            msg: String::new(),
-            cursor: Cursor::new(),
+            msg,
+            cursor,
             note: None,
-            return_val: Some(val)
         }
     }
 

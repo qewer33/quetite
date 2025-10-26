@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     evaluator::{
-        runtime_err::{EvalResult, RuntimeErr},
+        runtime_err::{EvalResult, RuntimeEvent},
         value::Value,
     },
     lexer::cursor::Cursor,
@@ -43,7 +43,7 @@ impl Env {
         if let Some(ref parent) = self.enclosing {
             return parent.borrow_mut().assign(name, val, cursor);
         }
-        Err(RuntimeErr::new(
+        Err(RuntimeEvent::error(
             format!("undefined variable '{}'", name),
             cursor,
         ))
@@ -56,7 +56,7 @@ impl Env {
         if let Some(ref parent) = self.enclosing {
             return parent.borrow().get(name, cursor);
         }
-        Err(RuntimeErr::new(
+        Err(RuntimeEvent::error(
             format!("undefined variable '{}'", name),
             cursor,
         ))

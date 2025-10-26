@@ -5,25 +5,29 @@ pub enum StmtKind {
     Expr(Expr),
     Print(Expr),
     Return(Option<Expr>),
+    Break,
+    Continue,
     Var {
         name: String,
-        init: Option<Expr>
+        init: Option<Expr>,
     },
     Block(Vec<Stmt>),
     If {
         condition: Expr,
         then_branch: Box<Stmt>,
-        else_branch: Option<Box<Stmt>>
+        else_branch: Option<Box<Stmt>>,
     },
     While {
+        declr: Option<Box<Stmt>>,
         condition: Expr,
-        body: Box<Stmt>
+        step: Option<Expr>,
+        body: Box<Stmt>,
     },
     Fn {
         name: String,
         params: Vec<String>,
-        body: Box<Stmt>
-    }
+        body: Box<Stmt>,
+    },
 }
 
 #[derive(Debug, Clone)]

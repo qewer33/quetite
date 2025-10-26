@@ -5,20 +5,23 @@
 ```js
 program        → statement* EOF ;
 
-declaration    → funDecl
-               | varDecl
+declaration    → funDeclr
+               | varDeclr
                | statement ;
 
-funDecl        → "fn" function ;
+funDeclr       → "fn" function ;
 function       → IDENTIFIER "(" parameters? ")" block ;
 parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
-varDecl        → IDENTIFIER ( "=" expression )? EOL ;
+varDeclr       → "var" IDENTIFIER ( "=" expression )? EOL ;
+varDeclrHeader → "var" IDENTIFIER "=" expression ;
 
 statement      → exprStmt
                | ifStmt
                | forStmt
                | printStmt
                | returnStmt
+               | breakStmt
+               | continueStmt
                | whileStmt
                | block ;
 
@@ -30,11 +33,13 @@ forStmt        → "for" ( varDecl | exprStmt | "and" )
                  expression? statement ;
 printStmt      → "print" expression EOL ;
 returnStmt     → "return" expression EOL ;
-whileStmt      → "while" "(" expression ")" statement ;
+breakStmt      → "break" EOL ; 
+continueStmt   → "continue" EOL ; 
+whileStmt      → varDeclrHeader? "while" expression ("step" assignment)? statement ;
 block          → "do" declaration "end" ;
 
 expression     → assignment ;
-assignment     → IDENTIFIER "=" assignment
+assignment     → IDENTIFIER ("=" | "+=" | "-=" ) assignment
                | logic_or ;
 logic_or       → logic_and ( "or" logic_and )* ;
 logic_and      → equality ( "and" equality )* ;
