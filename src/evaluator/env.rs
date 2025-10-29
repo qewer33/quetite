@@ -61,4 +61,30 @@ impl Env {
             cursor,
         ))
     }
+
+    // This version works when you call it on an EnvPtr
+    pub fn assign_at(env_ptr: &EnvPtr, name: &str, val: Value, dist: usize) -> EvalResult<()> {
+        let ancestor = Self::ancestor(env_ptr.clone(), dist);
+        ancestor.borrow_mut().values.insert(name.to_string(), val);
+        Ok(())
+    }
+
+    pub fn get_at(env_ptr: &EnvPtr, name: &str, dist: usize, cursor: Cursor) -> EvalResult<Value> {
+        let ancestor = Self::ancestor(env_ptr.clone(), dist);
+        ancestor
+            .borrow()
+            .values
+            .get(name)
+            .cloned()
+            .ok_or_else(|| RuntimeEvent::error(format!("undefined variable '{}'", name), cursor))
+    }
+
+    pub fn ancestor(env_ptr: EnvPtr, dist: usize) -> EnvPtr {
+        let mut current = env_ptr;
+        for _ in 0..dist {
+            let next = current.borrow().enclosing.clone().unwrap();
+            current = next;
+        }
+        current
+    }
 }

@@ -18,7 +18,6 @@ varDeclrHeader → "var" IDENTIFIER "=" expression ;
 statement      → exprStmt
                | ifStmt
                | forStmt
-               | printStmt
                | returnStmt
                | breakStmt
                | continueStmt
@@ -31,7 +30,6 @@ ifStmt         → "if" expression statement
 forStmt        → "for" ( varDecl | exprStmt | "and" )
                  expression? "and"
                  expression? statement ;
-printStmt      → "print" expression EOL ;
 returnStmt     → "return" expression EOL ;
 breakStmt      → "break" EOL ; 
 continueStmt   → "continue" EOL ; 

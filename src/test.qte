@@ -1,4 +1,0 @@
-var i = 0 while i < 10 step i++ do
-    print("test")
-    print("sus")
-end

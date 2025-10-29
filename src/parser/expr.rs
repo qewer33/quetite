@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use crate::lexer::{
     cursor::Cursor,
     token::{KeywordKind, TokenKind},
@@ -18,7 +20,7 @@ pub enum ExprKind {
     },
     Call {
         callee: Box<Expr>,
-        args: Vec<Expr>
+        args: Vec<Expr>,
     },
     Grouping {
         expr: Box<Expr>,
@@ -41,11 +43,25 @@ pub struct Expr {
     pub kind: ExprKind,
     /// Location of the expression as a Cursor
     pub cursor: Cursor,
+    /// Resolved distance
+    pub resolved_dist: RefCell<Option<usize>>,
 }
 
 impl Expr {
     pub fn new(kind: ExprKind, cursor: Cursor) -> Self {
-        Self { kind, cursor }
+        Self {
+            kind,
+            cursor,
+            resolved_dist: RefCell::new(None),
+        }
+    }
+
+    pub fn resolve(&mut self, dist: usize) {
+        *self.resolved_dist.borrow_mut() = Some(dist);
+    }
+
+    pub fn get_resolved_dist(&self) -> Option<usize> {
+        *self.resolved_dist.borrow()
     }
 }
 
@@ -86,7 +102,9 @@ impl TryFrom<&TokenKind> for AssignOp {
             TokenKind::SubAssign => Ok(AssignOp::Sub),
             TokenKind::Incr => Ok(AssignOp::Add),
             TokenKind::Decr => Ok(AssignOp::Sub),
-            _ => Err(OpFromTokenError::NotAssign("expected assign operator token")),
+            _ => Err(OpFromTokenError::NotAssign(
+                "expected assign operator token",
+            )),
         }
     }
 }

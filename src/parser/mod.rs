@@ -194,9 +194,6 @@ impl<'a> Parser<'a> {
     }
 
     fn stmt(&mut self) -> ParseResult<Stmt> {
-        if self.match_keyword(KeywordKind::Print) {
-            return self.print_stmt();
-        }
         if self.match_keyword(KeywordKind::Return) {
             return self.return_stmt();
         }
@@ -338,15 +335,6 @@ impl<'a> Parser<'a> {
     }
     */
 
-    fn print_stmt(&mut self) -> ParseResult<Stmt> {
-        let val = self.expr()?;
-        self.consume(
-            TokenKindDiscriminants::EOL,
-            "expected '\\n' after expression",
-        )?;
-        Ok(Stmt::new(StmtKind::Print(val), self.previous().cursor))
-    }
-
     fn return_stmt(&mut self) -> ParseResult<Stmt> {
         let mut val: Option<Expr> = None;
 
@@ -411,10 +399,10 @@ impl<'a> Parser<'a> {
             TokenKindDiscriminants::Decr,
         ]) {
             let op = AssignOp::try_from(&self.previous().kind).unwrap();
-            let mut val = Expr {
-                kind: ExprKind::Literal(LiteralType::Num(1.0)),
-                cursor: self.current().cursor,
-            };
+            let mut val = Expr::new(
+                ExprKind::Literal(LiteralType::Num(1.0)),
+                self.current().cursor,
+            );
             if self.previous().kind != TokenKind::Incr && self.previous().kind != TokenKind::Decr {
                 val = self.assignment()?;
             }
@@ -805,8 +793,7 @@ impl<'a> Parser<'a> {
                     | KeywordKind::Var
                     | KeywordKind::For
                     | KeywordKind::If
-                    | KeywordKind::While
-                    | KeywordKind::Print => {
+                    | KeywordKind::While => {
                         break;
                     }
                     _ => {}

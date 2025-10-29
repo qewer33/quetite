@@ -3,7 +3,6 @@ use crate::{lexer::cursor::Cursor, parser::expr::Expr};
 #[derive(Debug, Clone)]
 pub enum StmtKind {
     Expr(Expr),
-    Print(Expr),
     Return(Option<Expr>),
     Break,
     Continue,

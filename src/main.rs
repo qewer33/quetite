@@ -1,7 +1,13 @@
 use clap::Parser as ClapParser;
 use std::path::PathBuf;
 
-use crate::{evaluator::Evaluator, lexer::Lexer, parser::Parser, reporter::Reporter, src::Src};
+use crate::{
+    evaluator::{Evaluator, resolver::Resolver},
+    lexer::Lexer,
+    parser::Parser,
+    reporter::Reporter,
+    src::Src,
+};
 
 pub mod evaluator;
 pub mod lexer;
@@ -55,7 +61,16 @@ fn main() {
     let mut parser = Parser::new(&src);
     let parser_out = parser.parse();
     src.ast = match parser_out.ast {
-        Some(s) => Some(s),
+        Some(s) => {
+            if parser_out.warning_count > 0 {
+                Reporter::warning(
+                    format!("parser exited with {} warnings", parser_out.error_count).as_str(),
+                );
+                println!();
+            }
+
+            Some(s)
+        }
         None => {
             // Exit on parse error
             Reporter::error(
@@ -73,7 +88,33 @@ fn main() {
         }
     }
 
-    // 4) Execute
+    // 4) Resolve & Execute
+    let mut resolver = Resolver::new(&src);
+    let resolver_out = resolver.resolve();
+    src.ast = match resolver_out.ast {
+        Some(s) => {
+            if resolver_out.warning_count > 0 {
+                Reporter::warning(
+                    format!(
+                        "resolver exited with {} warnings",
+                        resolver_out.warning_count
+                    )
+                    .as_str(),
+                );
+                println!();
+            }
+
+            Some(s)
+        }
+        None => {
+            // Exit on parse error
+            Reporter::error(
+                format!("resolver exited with {} errors", resolver_out.error_count).as_str(),
+            );
+            std::process::exit(1);
+        }
+    };
+
     let mut evaluator = Evaluator::new(&src);
     evaluator.eval();
 }
