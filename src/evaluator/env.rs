@@ -62,7 +62,6 @@ impl Env {
         ))
     }
 
-    // This version works when you call it on an EnvPtr
     pub fn assign_at(env_ptr: &EnvPtr, name: &str, val: Value, dist: usize) -> EvalResult<()> {
         let ancestor = Self::ancestor(env_ptr.clone(), dist);
         ancestor.borrow_mut().values.insert(name.to_string(), val);

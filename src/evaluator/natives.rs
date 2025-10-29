@@ -5,9 +5,7 @@ use std::{
 };
 
 use crate::evaluator::{
-    Evaluator,
-    env::{Env, EnvPtr},
-    value::{Callable, Value},
+    Evaluator, env::{Env, EnvPtr}, runtime_err::EvalResult, value::{Callable, Value}
 };
 
 pub struct Natives;
@@ -42,9 +40,9 @@ impl Callable for FnPrint {
         1
     }
 
-    fn call(&self, _evaluator: &mut Evaluator, args: Vec<Value>) -> Value {
-        print!("{}", args[0]);
-        Value::Null
+    fn call(&self, _evaluator: &mut Evaluator, args: Vec<Value>) -> EvalResult<Value> {
+        println!("{}", args[0]);
+        Ok(Value::Null)
     }
 }
 
@@ -60,12 +58,12 @@ impl Callable for FnRead {
         0
     }
 
-    fn call(&self, _evaluator: &mut Evaluator, _args: Vec<Value>) -> Value {
+    fn call(&self, _evaluator: &mut Evaluator, _args: Vec<Value>) -> EvalResult<Value> {
         let mut string = String::new();
         io::stdin()
             .read_line(&mut string)
             .expect("Failed to read line");
-        Value::Str(string.trim().to_string())
+        Ok(Value::Str(string.trim().to_string()))
     }
 }
 
@@ -81,11 +79,11 @@ impl Callable for FnClock {
         0
     }
 
-    fn call(&self, _evaluator: &mut Evaluator, _args: Vec<Value>) -> Value {
+    fn call(&self, _evaluator: &mut Evaluator, _args: Vec<Value>) -> EvalResult<Value> {
         let start = SystemTime::now();
         let from_epoch = start
             .duration_since(UNIX_EPOCH)
             .expect("time should go forward");
-        Value::Num(from_epoch.as_millis() as f64)
+        Ok(Value::Num(from_epoch.as_millis() as f64))
     }
 }

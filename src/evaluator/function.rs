@@ -2,7 +2,7 @@ use crate::{
     evaluator::{
         Evaluator,
         env::{Env, EnvPtr},
-        runtime_err::RuntimeEvent,
+        runtime_err::{EvalResult, RuntimeEvent},
         value::{Callable, Value},
     },
     parser::stmt::{Stmt, StmtKind},
@@ -56,7 +56,7 @@ impl Callable for Function {
         unreachable!("Non-fn statement passed as declaration to Function::new(declr)");
     }
 
-    fn call(&self, evaluator: &mut Evaluator, args: Vec<Value>) -> Value {
+    fn call(&self, evaluator: &mut Evaluator, args: Vec<Value>) -> EvalResult<Value> {
         if let StmtKind::Fn {
             name: _,
             params,
@@ -69,16 +69,11 @@ impl Callable for Function {
                 env.borrow_mut().define(param.clone(), args[i].clone());
             }
 
-            match evaluator.eval_stmt_block(body, env) {
-                Ok(()) => return Value::Null,
-                Err(err) => {
-                    // Catch the return value
-                    if let RuntimeEvent::Return(val) = err {
-                        return val;
-                    }
-                    return Value::Null;
-                }
-            }
+            return match evaluator.eval_stmt_block(body, env) {
+                Ok(()) => Ok(Value::Null),
+                Err(RuntimeEvent::Return(v)) => Ok(v), // function return
+                Err(e) => Err(e),
+            };
         }
 
         unreachable!("Non-fn statement passed as declaration to Function::new(declr)");

@@ -185,12 +185,16 @@ impl<'a> Evaluator<'a> {
             let prev = self.env.clone();
             self.env = env;
 
-            for stmt in statements.iter() {
-                self.eval_stmt(stmt)?;
-            }
+            // save result
+            let result = (|| -> EvalResult<()> {
+                for s in statements {
+                    self.eval_stmt(s)?;
+                }
+                Ok(())
+            })();
 
-            self.env = prev;
-            return Ok(());
+            self.env = prev; // restore env
+            return result; // propagate result
         }
         unreachable!("Non-block statement passed to Evaluator::eval_stmt_block");
     }
@@ -296,7 +300,7 @@ impl<'a> Evaluator<'a> {
                         expr.cursor,
                     ));
                 }
-                return Ok(c.call(self, args_values));
+                return Ok(c.call(self, args_values)?);
             }
             return Err(RuntimeEvent::error(
                 "can't call non-function".into(),
@@ -387,7 +391,7 @@ impl<'a> Evaluator<'a> {
         if let Some(d) = expr.get_resolved_dist() {
             Env::get_at(&self.env.clone(), name.as_str(), d, expr.cursor)
         } else {
-            self.globals.borrow().get(name.as_str(), expr.cursor)
+            self.env.borrow().get(name.as_str(), expr.cursor)
         }
     }
 }

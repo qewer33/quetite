@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    evaluator::{Evaluator, runtime_err::RuntimeEvent},
+    evaluator::{Evaluator, runtime_err::{EvalResult, RuntimeEvent}},
     lexer::cursor::Cursor,
 };
 
@@ -87,5 +87,5 @@ impl Value {
 pub trait Callable: Debug {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    fn call(&self, evaluator: &mut Evaluator, args: Vec<Value>) -> Value;
+    fn call(&self, evaluator: &mut Evaluator, args: Vec<Value>) -> EvalResult<Value>;
 }
