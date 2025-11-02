@@ -220,7 +220,7 @@ impl<'a> Evaluator<'a> {
             let mut val = self.eval_expr(val)?;
 
             if let Value::Num(mut num) = val {
-                let var_val = self.lookup_var(name.clone(), expr)?;
+                let var_val = self.lookup_var(name.as_str(), expr)?;
                 if let Value::Num(var_num) = var_val {
                     if let AssignOp::Add = op {
                         num += var_num;
@@ -247,7 +247,7 @@ impl<'a> Evaluator<'a> {
 
     fn eval_expr_var(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Var(name) = &expr.kind {
-            return self.lookup_var(name.clone(), expr);
+            return self.lookup_var(name.as_str(), expr);
         }
         unreachable!("Non-var passed to Evaluator::eval_expr_var");
     }
@@ -387,11 +387,11 @@ impl<'a> Evaluator<'a> {
 
     // Utility functions
 
-    pub fn lookup_var(&self, name: String, expr: &Expr) -> EvalResult<Value> {
+    pub fn lookup_var(&self, name: &str, expr: &Expr) -> EvalResult<Value> {
         if let Some(d) = expr.get_resolved_dist() {
-            Env::get_at(&self.env.clone(), name.as_str(), d, expr.cursor)
+            Env::get_at(&self.env.clone(), name, d, expr.cursor)
         } else {
-            self.env.borrow().get(name.as_str(), expr.cursor)
+            self.env.borrow().get(name, expr.cursor)
         }
     }
 }

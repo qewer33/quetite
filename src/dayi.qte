@@ -4,10 +4,11 @@ var temp
 var fibo = 0
 var fibo1 = 1
 
-for var i = 0 while i<10 step i=i+1 do
+var i = 0 while i < 39 step i++ do
     temp = fibo1
     fibo1 = fibo+fibo1
     fibo = temp
 end
-print fibo1
+
+print(fibo1)
 

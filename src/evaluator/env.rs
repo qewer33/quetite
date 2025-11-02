@@ -1,4 +1,6 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
+
+use rustc_hash::FxHashMap;
 
 use crate::{
     evaluator::{
@@ -13,21 +15,21 @@ pub type EnvPtr = Rc<RefCell<Env>>;
 #[derive(Debug)]
 pub struct Env {
     enclosing: Option<EnvPtr>,
-    values: HashMap<String, Value>,
+    values: FxHashMap<String, Value>,
 }
 
 impl Env {
     pub fn new() -> EnvPtr {
         Rc::new(RefCell::new(Self {
             enclosing: None,
-            values: HashMap::new(),
+            values: FxHashMap::default(),
         }))
     }
 
     pub fn enclosed(enclosing: EnvPtr) -> EnvPtr {
         Rc::new(RefCell::new(Self {
             enclosing: Some(enclosing),
-            values: HashMap::new(),
+            values: FxHashMap::default(),
         }))
     }
 
