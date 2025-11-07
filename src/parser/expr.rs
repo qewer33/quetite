@@ -8,6 +8,7 @@ use crate::lexer::{
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Literal(LiteralType),
+    List(Vec<Expr>),
     Assign {
         name: String,
         op: AssignOp,
@@ -42,6 +43,16 @@ pub enum ExprKind {
     Set {
         obj: Box<Expr>,
         name: String,
+        op: AssignOp,
+        val: Box<Expr>,
+    },
+    Index {
+        obj: Box<Expr>,
+        index: Box<Expr>,
+    },
+    IndexSet {
+        obj: Box<Expr>,
+        index: Box<Expr>,
         op: AssignOp,
         val: Box<Expr>,
     },
@@ -90,7 +101,6 @@ pub enum OpFromTokenError {
 #[derive(Debug, Clone)]
 pub enum LiteralType {
     Null,
-    // Float(f64),
     Num(f64),
     Str(String),
     Bool(bool),

@@ -2,11 +2,12 @@ pub mod env;
 pub mod function;
 pub mod natives;
 pub mod object;
+pub mod prototype;
 pub mod resolver;
 pub mod runtime_err;
 pub mod value;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use ordered_float::OrderedFloat;
 
@@ -15,7 +16,8 @@ use crate::{
         env::{Env, EnvPtr},
         function::Function,
         natives::Natives,
-        object::Object,
+        object::{Method, Object},
+        prototype::{BoundMethod, ValuePrototypes},
         runtime_err::{EvalResult, RuntimeErr, RuntimeEvent},
         value::{Callable, Value},
     },
@@ -33,6 +35,7 @@ pub struct Evaluator<'a> {
     ast: Vec<Stmt>,
     globals: EnvPtr,
     env: EnvPtr,
+    prototypes: ValuePrototypes,
 }
 
 impl<'a> Evaluator<'a> {
@@ -44,6 +47,7 @@ impl<'a> Evaluator<'a> {
             ast: src.ast.clone().expect("expected ast"),
             globals,
             env: Env::new(),
+            prototypes: ValuePrototypes::new(),
         };
         this.env = this.globals.clone();
         this
@@ -179,12 +183,12 @@ impl<'a> Evaluator<'a> {
 
     fn eval_stmt_fn(&mut self, stmt: &Stmt) -> EvalResult<()> {
         if let StmtKind::Fn { name, bound, .. } = &stmt.kind {
-            let function = Value::Callable(Rc::new(Function::new(
+            let func = Value::Callable(Rc::new(Function::new(
                 stmt.clone(),
                 self.env.clone(),
                 *bound,
             )));
-            self.env.borrow_mut().define(name.clone(), function);
+            self.env.borrow_mut().define(name.clone(), func);
             return Ok(());
         }
         unreachable!("Non-fn statement passed to Evaluator::eval_stmt_fn");
@@ -194,11 +198,11 @@ impl<'a> Evaluator<'a> {
         if let StmtKind::Obj { name, methods } = &stmt.kind {
             self.env.borrow_mut().define(name.clone(), Value::Null);
 
-            let mut obj_methods: HashMap<String, Function> = HashMap::new();
+            let mut obj_methods: HashMap<String, Method> = HashMap::new();
             for method in methods.to_owned() {
                 if let StmtKind::Fn { bound, .. } = &method.kind {
-                    let function: Function = Function::new(method.clone(), self.env.clone(), *bound);
-                    obj_methods.insert(function.name().to_string(), function);
+                    let func: Function = Function::new(method.clone(), self.env.clone(), *bound);
+                    obj_methods.insert(func.name().to_string(), Method::User(func));
                 }
             }
 
@@ -239,6 +243,9 @@ impl<'a> Evaluator<'a> {
             ExprKind::Grouping { .. } => self.eval_expr_grouping(expr),
             ExprKind::Unary { .. } => self.eval_expr_unary(expr),
             ExprKind::Literal(_) => self.eval_expr_literal(expr),
+            ExprKind::List(_) => self.eval_expr_list(expr),
+            ExprKind::Index { .. } => self.eval_expr_index(expr),
+            ExprKind::IndexSet { .. } => self.eval_expr_index_set(expr),
             ExprKind::Call { .. } => self.eval_expr_call(expr),
             ExprKind::Var(_) => self.eval_expr_var(expr),
             ExprKind::Assign { .. } => self.eval_expr_assign(expr),
@@ -251,31 +258,30 @@ impl<'a> Evaluator<'a> {
 
     fn eval_expr_assign(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Assign { name, op, val } = &expr.kind {
-            let mut val = self.eval_expr(val)?;
+            let rhs_val = self.eval_expr(val)?;
 
-            if let Value::Num(mut num) = val {
-                let var_val = self.lookup_var(name.as_str(), expr)?;
-                if let Value::Num(var_num) = var_val {
-                    if let AssignOp::Add = op {
-                        num += var_num;
-                    }
-                    if let AssignOp::Sub = op {
-                        num = var_num - num;
-                    }
-                    val = Value::Num(num);
-                }
-            }
+            // read current
+            let current = self.lookup_var(name.as_str(), expr)?;
 
+            // compute new value
+            let new_val = match op {
+                AssignOp::Value => rhs_val.clone(),
+                AssignOp::Add => current.add_assign(rhs_val, expr.cursor)?,
+                AssignOp::Sub => current.sub_assign(rhs_val, expr.cursor)?,
+            };
+
+            // write back
             if let Some(d) = expr.get_resolved_dist() {
-                Env::assign_at(&self.env, name, val.clone(), d)?;
+                Env::assign_at(&self.env, name, new_val.clone(), d)?;
             } else {
                 self.globals
                     .borrow_mut()
-                    .assign(name, val.clone(), expr.cursor)?;
+                    .assign(name, new_val.clone(), expr.cursor)?;
             }
 
-            return Ok(val);
+            return Ok(new_val);
         }
+
         unreachable!("Non-assign passed to Evaluator::eval_expr_assign");
     }
 
@@ -309,10 +315,137 @@ impl<'a> Evaluator<'a> {
                 LiteralType::Null => Ok(Value::Null),
                 LiteralType::Num(i) => Ok(Value::Num(OrderedFloat(*i))),
                 LiteralType::Bool(b) => Ok(Value::Bool(*b)),
-                LiteralType::Str(s) => Ok(Value::Str(s.clone())),
+                LiteralType::Str(s) => Ok(Value::Str(Rc::new(RefCell::new(s.clone())))),
             };
         }
         unreachable!("Non-literal passed to Evaluator::eval_expr_literal");
+    }
+
+    fn eval_expr_list(&mut self, expr: &Expr) -> EvalResult<Value> {
+        if let ExprKind::List(list) = &expr.kind {
+            let mut values: Vec<Value> = vec![];
+
+            for expr in list {
+                values.push(self.eval_expr(expr)?);
+            }
+
+            return Ok(Value::List(Rc::new(RefCell::new(values))));
+        }
+        unreachable!("Non-list passed to Evaluator::eval_expr_list");
+    }
+
+    fn eval_expr_index(&mut self, expr: &Expr) -> EvalResult<Value> {
+        if let ExprKind::Index { obj, index } = &expr.kind {
+            let base_val = self.eval_expr(obj)?;
+            let index_val = self.eval_expr(index)?;
+
+            let idx = match index_val {
+                Value::Num(n) => n.0 as usize,
+                _ => {
+                    return Err(RuntimeEvent::error(
+                        "list index must be a Num".into(),
+                        index.cursor,
+                    ));
+                }
+            };
+
+            return match base_val {
+                Value::List(items) => {
+                    if idx >= items.borrow().len() {
+                        return Err(RuntimeEvent::error(
+                            format!(
+                                "list index {} out of bounds (len = {})",
+                                idx,
+                                items.borrow().len()
+                            ),
+                            expr.cursor,
+                        ));
+                    }
+                    Ok(items.borrow()[idx].clone())
+                }
+                Value::Str(s) => {
+                    let chars: Vec<char> = s.borrow().chars().collect();
+                    if idx >= chars.len() {
+                        return Err(RuntimeEvent::error(
+                            format!("string index {} out of bounds (len = {})", idx, chars.len()),
+                            expr.cursor,
+                        ));
+                    }
+                    Ok(Value::Str(Rc::new(RefCell::new(chars[idx].to_string()))))
+                }
+                _ => Err(RuntimeEvent::error(
+                    "value is not indexable".into(),
+                    expr.cursor,
+                )),
+            };
+        }
+        unreachable!("Non-index passed to eval_expr_index");
+    }
+
+    fn eval_expr_index_set(&mut self, expr: &Expr) -> EvalResult<Value> {
+        if let ExprKind::IndexSet {
+            obj, index, val, ..
+        } = &expr.kind
+        {
+            let base_val = self.eval_expr(obj)?;
+            let index_val = self.eval_expr(index)?;
+
+            let idx = match index_val {
+                Value::Num(n) => n.0 as usize,
+                _ => {
+                    return Err(RuntimeEvent::error(
+                        "list index must be a Num".into(),
+                        index.cursor,
+                    ));
+                }
+            };
+
+            return match base_val {
+                Value::List(items) => {
+                    if idx >= items.borrow().len() {
+                        return Err(RuntimeEvent::error(
+                            format!(
+                                "list index {} out of bounds (len = {})",
+                                idx,
+                                items.borrow().len()
+                            ),
+                            expr.cursor,
+                        ));
+                    }
+
+                    let set_val = self.eval_expr(val)?;
+                    items.borrow_mut()[idx] = set_val.clone();
+
+                    Ok(set_val)
+                }
+                Value::Str(s) => {
+                    let chars: Vec<char> = s.borrow().chars().collect();
+                    if idx >= chars.len() {
+                        return Err(RuntimeEvent::error(
+                            format!("string index {} out of bounds (len = {})", idx, chars.len()),
+                            expr.cursor,
+                        ));
+                    }
+
+                    let set_val = self.eval_expr(val)?;
+                    if let Value::Str(set_str) = set_val.clone() {
+                        s.borrow_mut()
+                            .replace_range(idx..=idx, set_str.borrow().as_str());
+                        return Ok(set_val);
+                    }
+
+                    Err(RuntimeEvent::error(
+                        "can't set index of Str to non-Str".into(),
+                        expr.cursor,
+                    ))
+                }
+                _ => Err(RuntimeEvent::error(
+                    "value is not indexable".into(),
+                    expr.cursor,
+                )),
+            };
+        }
+        unreachable!("Non-index_set passed to Evaluator::eval_index_set");
     }
 
     fn eval_expr_call(&mut self, expr: &Expr) -> EvalResult<Value> {
@@ -327,7 +460,7 @@ impl<'a> Evaluator<'a> {
                 if args_values.len() != c.arity() {
                     return Err(RuntimeEvent::error(
                         format!(
-                            "functions expects {} arguments but got {}",
+                            "function expects {} arguments but got {}",
                             c.arity(),
                             args_values.len()
                         ),
@@ -363,18 +496,20 @@ impl<'a> Evaluator<'a> {
         if let ExprKind::Get { obj, name } = &expr.kind {
             let val = self.eval_expr(obj)?;
 
+            // instance methods
             if let Value::ObjInstance(inst) = val {
                 return Ok(inst.borrow().get(name.clone(), expr.cursor)?);
             }
 
+            // static methods
             if let Value::Obj(obj) = val {
-                if let Some(func) = obj.methods.get(&name.clone()) {
-                    if !func.bound {
-                        return Ok(Value::Callable(Rc::new(func.clone())));
+                if let Some(method) = obj.methods.get(&name.clone()) {
+                    if !method.get_bound() {
+                        return Ok(Value::Callable(method.get_callable()));
                     } else {
                         return Err(RuntimeEvent::error(
                             format!(
-                                "can't call non-static method {} of object {} without an instance",
+                                "can't call bound method '{}' of object '{}' without an instance",
                                 name, obj.name
                             ),
                             expr.cursor,
@@ -382,13 +517,28 @@ impl<'a> Evaluator<'a> {
                     }
                 }
                 return Err(RuntimeEvent::error(
-                    format!("static method {} undefined in object {}", name, obj.name),
+                    format!("static method '{}' undefined in object {}", name, obj.name),
+                    expr.cursor,
+                ));
+            }
+
+            // primitive prototype methods
+            if let Some(proto) = val.prototype(&self.prototypes) {
+                if let Some(method) = proto.get_method(name.clone()) {
+                    let bound = BoundMethod {
+                        receiver: val.clone(),
+                        method,
+                    };
+                    return Ok(Value::Callable(Rc::new(bound)));
+                }
+                return Err(RuntimeEvent::error(
+                    format!("method '{}' not found in {} prototype", name, proto.name),
                     expr.cursor,
                 ));
             }
 
             return Err(RuntimeEvent::error(
-                "only instances have properties".into(),
+                "only instances and primitives with prototypes have properties".into(),
                 expr.cursor,
             ));
         }
@@ -448,7 +598,11 @@ impl<'a> Evaluator<'a> {
                     if let (Value::Num(ln), Value::Num(rn)) = (left.clone(), right.clone()) {
                         Ok(Value::Num(ln + rn))
                     } else if let (Value::Str(ls), Value::Str(rs)) = (left, right) {
-                        Ok(Value::Str(format!("{}{}", ls, rs)))
+                        Ok(Value::Str(Rc::new(RefCell::new(format!(
+                            "{}{}",
+                            ls.borrow(),
+                            rs.borrow()
+                        )))))
                     } else {
                         Ok(Value::Null)
                     }

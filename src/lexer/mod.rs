@@ -194,11 +194,11 @@ impl Lexer {
             }
             // Other
             '\r' => {
-                // Handle Windows CRLF as a single EOL
+                // handle Windows CRLF as a single EOL
                 if self.peek() == '\n' {
                     self.next();
                 }
-                // Collapse any following \n\n...
+                // collapse any following \n\n...
                 while self.peek() == '\n' {
                     self.next();
                 }
@@ -206,7 +206,7 @@ impl Lexer {
                 Some(TokenKind::EOL)
             }
             '\n' => {
-                // Collapse \n+
+                // collapse \n+
                 while self.peek() == '\n' {
                     self.next();
                 }
@@ -228,7 +228,7 @@ impl Lexer {
                 None
             }
             _ => {
-                // Check types
+                // check types
                 if let Some(bool) = self.check_bool() {
                     self.next();
                     return Some(TokenKind::Bool(bool));
@@ -239,13 +239,16 @@ impl Lexer {
                     return Some(TokenKind::Num(num));
                 }
 
-                // Check keywords, assume identifiers if it doesn't match any
+                // check keywords, assume identifiers if it doesn't match any
                 let mut str = String::new();
 
+                // symbols accepted inside identifiers
+                let accepted_symbols = ['_', '-'];
                 loop {
                     str.push(self.current());
 
-                    if !self.peek().is_alphanumeric() {
+                    let peek = self.peek();
+                    if !(peek.is_alphanumeric() || accepted_symbols.contains(&peek)) {
                         break;
                     }
                     self.next();
@@ -380,7 +383,7 @@ impl Lexer {
         }
 
         if self.src[self.curr..end] == s_chars[..] {
-            // Advance to the last matched char (caller will do one `next()` after)
+            // advance to the last matched char (caller will do one `next()` after)
             for _ in 0..needed.saturating_sub(1) {
                 self.next();
             }

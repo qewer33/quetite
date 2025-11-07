@@ -1,14 +1,41 @@
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     io,
     rc::Rc,
-    time::{SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use ordered_float::OrderedFloat;
+use rand::Rng;
 
 use crate::evaluator::{
-    Evaluator, env::{Env, EnvPtr}, runtime_err::EvalResult, value::{Callable, Value}
+    Evaluator,
+    env::{Env, EnvPtr},
+    object::{Method, NativeMethod, Object},
+    runtime_err::EvalResult,
+    value::{Callable, Value},
 };
+
+#[macro_export]
+macro_rules! native_fn {
+    ($name:ident, $str_name:expr, $arity:expr, |$evaluator:ident, $args:ident| $body:block) => {
+        #[derive(Debug)]
+        struct $name;
+        impl Callable for $name {
+            fn name(&self) -> &str {
+                $str_name
+            }
+            fn arity(&self) -> usize {
+                $arity
+            }
+            fn call(&self, $evaluator: &mut Evaluator, $args: Vec<Value>) -> EvalResult<Value> {
+                $body
+            }
+        }
+    };
+}
 
 pub struct Natives;
 
@@ -25,67 +52,51 @@ impl Natives {
         natives
             .borrow_mut()
             .define("clock".into(), Value::Callable(Rc::new(FnClock)));
+        natives
+            .borrow_mut()
+            .define("sleep".into(), Value::Callable(Rc::new(FnSleep)));
+        natives
+            .borrow_mut()
+            .define("rand".into(), Value::Callable(Rc::new(FnRand)));
 
         natives
     }
 }
 
-/// print(expr): prints an expression to stdout with a newline
-#[derive(Debug)]
-struct FnPrint;
-impl Callable for FnPrint {
-    fn name(&self) -> &str {
-        "print"
-    }
+// print(expr): prints an expression to stdin
+native_fn!(FnPrint, "print", 1, |_evaluator, args| {
+    println!("{}", args[0]);
+    Ok(Value::Null)
+});
 
-    fn arity(&self) -> usize {
-        1
-    }
+// read() -> Str: reads a string from stdin
+native_fn!(FnRead, "read", 0, |_evaluator, _args| {
+    let mut string = String::new();
+    io::stdin()
+        .read_line(&mut string)
+        .expect("Failed to read line");
+    Ok(Value::Str(Rc::new(RefCell::new(string.trim().to_string()))))
+});
 
-    fn call(&self, _evaluator: &mut Evaluator, args: Vec<Value>) -> EvalResult<Value> {
-        println!("{}", args[0]);
-        Ok(Value::Null)
-    }
-}
+// clock() -> Num: returns millis since unix epoch
+native_fn!(FnClock, "clock", 0, |_evaluator, _args| {
+    let start = SystemTime::now();
+    let from_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("time should go forward");
+    Ok(Value::Num(OrderedFloat(from_epoch.as_millis() as f64)))
+});
 
-/// read() -> Str: reads a string from stdin
-#[derive(Debug)]
-struct FnRead;
-impl Callable for FnRead {
-    fn name(&self) -> &str {
-        "read"
+// sleep(millis): puts main thread to sleep for given milliseconds
+native_fn!(FnSleep, "sleep", 1, |_evaluator, args| {
+    if let Value::Num(millis) = args[0] {
+        thread::sleep(Duration::from_millis(millis.0 as u64));
     }
+    Ok(Value::Null)
+});
 
-    fn arity(&self) -> usize {
-        0
-    }
-
-    fn call(&self, _evaluator: &mut Evaluator, _args: Vec<Value>) -> EvalResult<Value> {
-        let mut string = String::new();
-        io::stdin()
-            .read_line(&mut string)
-            .expect("Failed to read line");
-        Ok(Value::Str(string.trim().to_string()))
-    }
-}
-
-/// clock() -> Num: returns millis since unix epoch
-#[derive(Debug)]
-struct FnClock;
-impl Callable for FnClock {
-    fn name(&self) -> &str {
-        "clock"
-    }
-
-    fn arity(&self) -> usize {
-        0
-    }
-
-    fn call(&self, _evaluator: &mut Evaluator, _args: Vec<Value>) -> EvalResult<Value> {
-        let start = SystemTime::now();
-        let from_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("time should go forward");
-        Ok(Value::Num(OrderedFloat(from_epoch.as_millis() as f64)))
-    }
-}
+// rand() -> Num: returns a random number between 0 and 1
+native_fn!(FnRand, "rand", 0, |_evaluator, args| {
+    let mut rng = rand::rng();
+    Ok(Value::Num(OrderedFloat(rng.random())))
+});

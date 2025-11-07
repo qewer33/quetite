@@ -50,6 +50,7 @@ factor         → unary ( ( "/" | "*" | "**" | "??" ) unary )* ;
 unary          → ( "!" | "-" ) unary | call ;
 arguments      → expression ( "," expression )* ;
 call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
+list           - "[" arguments? "]" ;
 primary        → NUMBER | STRING | "true" | "false" | "nil"
                | "(" expression ")"
                | IDENTIFIER ;

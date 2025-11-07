@@ -1,4 +1,4 @@
-use std::{clone, collections::HashMap};
+use std::collections::HashMap;
 
 use crate::{
     lexer::{cursor::Cursor, token::KeywordKind},
@@ -227,7 +227,10 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_stmt_fn(&mut self, stmt: &Stmt) -> ResolveResult {
-        if let StmtKind::Fn { name, params, body, .. } = &stmt.kind {
+        if let StmtKind::Fn {
+            name, params, body, ..
+        } = &stmt.kind
+        {
             // Function name is bound in the enclosing scope.
             self.declare(name.clone(), stmt.cursor);
             self.define(name.clone(), stmt.cursor);
@@ -253,7 +256,7 @@ impl<'a> Resolver<'a> {
             self.begin_scope();
 
             for method in methods {
-                if let StmtKind::Fn { name, params, body, bound } = &method.kind {
+                if let StmtKind::Fn { bound, .. } = &method.kind {
                     if *bound {
                         self.scopes.last_mut().unwrap().insert(
                             KeywordKind::KSelf.to_string(),
@@ -289,6 +292,25 @@ impl<'a> Resolver<'a> {
                 Ok(())
             }
             ExprKind::Literal(_) => Ok(()),
+            ExprKind::List(list) => {
+                for expr in list {
+                    self.resolve_expr(expr)?;
+                }
+                Ok(())
+            }
+            ExprKind::Index { obj, index } => {
+                self.resolve_expr(obj)?;
+                self.resolve_expr(index)?;
+                Ok(())
+            }
+            ExprKind::IndexSet {
+                obj, index, val, ..
+            } => {
+                self.resolve_expr(obj)?;
+                self.resolve_expr(index)?;
+                self.resolve_expr(val)?;
+                Ok(())
+            }
             ExprKind::Call { callee, args } => {
                 self.resolve_expr(callee)?;
                 for a in args {
@@ -362,7 +384,7 @@ impl<'a> Resolver<'a> {
 
     fn end_scope(&mut self) {
         for (name, var) in self.scopes.last().unwrap() {
-            if !var.used {
+            if !var.used && *name != KeywordKind::KSelf.to_string() {
                 Reporter::warning_at(
                     format!("local variable {} never used", name).as_str(),
                     self.src,

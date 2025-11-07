@@ -465,6 +465,18 @@ impl<'a> Parser<'a> {
                 ));
             }
 
+            if let ExprKind::Index { obj, index } = expr.kind {
+                return Ok(Expr::new(
+                    ExprKind::IndexSet {
+                        obj,
+                        index,
+                        op,
+                        val: Box::new(val),
+                    },
+                    self.previous().cursor,
+                ));
+            }
+
             return Err(ParseErr::new(
                 "invalid assignment target".into(),
                 self.previous().cursor,
@@ -612,11 +624,22 @@ impl<'a> Parser<'a> {
     }
 
     fn call(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.primary()?;
+        let mut expr = self.list()?;
 
         loop {
             if self.match_tokens(vec![TokenKindDiscriminants::LParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_tokens(vec![TokenKindDiscriminants::LBracket]) {
+                let index_expr = self.expr()?;
+                self.consume(TokenKindDiscriminants::RBracket, "expected ']' after index")?;
+
+                expr = Expr::new(
+                    ExprKind::Index {
+                        obj: Box::new(expr),
+                        index: Box::new(index_expr),
+                    },
+                    self.previous().cursor,
+                );
             } else if self.match_tokens(vec![TokenKindDiscriminants::Dot]) {
                 let ident = self.consume(
                     TokenKindDiscriminants::Identifier,
@@ -670,6 +693,35 @@ impl<'a> Parser<'a> {
             },
             rparen.cursor,
         ))
+    }
+
+    fn list(&mut self) -> ParseResult<Expr> {
+        if let TokenKind::LBracket = self.current().kind {
+            self.next();
+
+            let mut elements: Vec<Expr> = vec![];
+
+            if !self.check(TokenKindDiscriminants::RBracket) {
+                loop {
+                    self.skip_eols();
+                    elements.push(self.expr()?);
+
+                    if !self.match_tokens(vec![TokenKindDiscriminants::Comma]) {
+                        break;
+                    }
+                }
+            }
+
+            self.skip_eols();
+            let rbrack = self.consume(
+                TokenKindDiscriminants::RBracket,
+                "expected ']' to end list definition".into(),
+            )?;
+
+            return Ok(Expr::new(ExprKind::List(elements), rbrack.cursor));
+        }
+
+        self.primary()
     }
 
     fn primary(&mut self) -> ParseResult<Expr> {

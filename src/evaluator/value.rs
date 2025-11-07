@@ -10,6 +10,7 @@ use crate::{
     evaluator::{
         Evaluator,
         object::{Instance, Object},
+        prototype::{Prototype, ValuePrototypes},
         runtime_err::{EvalResult, RuntimeEvent},
     },
     lexer::cursor::Cursor,
@@ -20,7 +21,8 @@ pub enum Value {
     Null,
     Bool(bool),
     Num(OrderedFloat<f64>),
-    Str(String),
+    Str(Rc<RefCell<String>>),
+    List(Rc<RefCell<Vec<Value>>>),
     Callable(Rc<dyn Callable>),
     Obj(Rc<Object>),
     ObjInstance(Rc<RefCell<Instance>>),
@@ -32,7 +34,8 @@ impl Display for Value {
             Value::Null => write!(f, "null"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Num(n) => write!(f, "{}", n.0),
-            Value::Str(s) => write!(f, "{s}"),
+            Value::Str(s) => write!(f, "{}", s.borrow()),
+            Value::List(l) => write!(f, "{:?}", l),
             Value::Callable(c) => write!(f, "{:?}", c),
             Value::Obj(o) => write!(f, "{}", o.name),
             Value::ObjInstance(i) => write!(f, "{}", i.borrow().to_string()),
@@ -41,6 +44,29 @@ impl Display for Value {
 }
 
 impl Value {
+    pub fn prototype<'a>(&self, prototypes: &'a ValuePrototypes) -> Option<&'a Prototype> {
+        match self {
+            Value::Num(_) => Some(&prototypes.num),
+            Value::Str(_) => Some(&prototypes.str),
+            Value::List(_) => Some(&prototypes.list),
+            Value::Bool(_) => Some(&prototypes.bool),
+            _ => None,
+        }
+    }
+
+    pub fn get_type(&self) -> String {
+        match self {
+            Value::Null => "Null".to_string(),
+            Value::Bool(_) => "Bool".to_string(),
+            Value::Num(_) => "Num".to_string(),
+            Value::Str(_) => "Str".to_string(),
+            Value::List(_) => "List".to_string(),
+            Value::Callable(_) => "Fn".to_string(),
+            Value::Obj(_) => "Obj".to_string(),
+            Value::ObjInstance(inst) => inst.borrow().obj.name.clone(),
+        }
+    }
+
     pub fn is_equal(&self, other: &Value) -> bool {
         match self {
             Value::Null => {
@@ -67,16 +93,24 @@ impl Value {
                 }
                 return false;
             }
+            Value::List(_) => {
+                // TODO: implement list eq
+                return false;
+            }
             Value::Obj(o) => {
                 if let Value::Obj(oo) = other {
                     return o.name == oo.name;
                 }
                 return false;
             }
-            Value::Callable(_) => {
+            Value::Callable(c) => {
+                if let Value::Callable(oc) = other {
+                    return c.name() == oc.name();
+                }
                 return false;
             }
             Value::ObjInstance(_) => {
+                // TODO: implement obj instance eq
                 return false;
             }
         }
@@ -100,6 +134,65 @@ impl Value {
             format!("expected Num, found {:?}", self),
             cursor,
         ))
+    }
+
+    pub fn add_assign(&self, rhs: Value, cursor: Cursor) -> EvalResult<Value> {
+        match self {
+            // number += number
+            Value::Num(n) => {
+                if let Value::Num(m) = rhs {
+                    Ok(Value::Num(OrderedFloat(n.0 + m.0)))
+                } else {
+                    Err(RuntimeEvent::error(
+                        "cannot add-asssign non-number to number".into(),
+                        cursor,
+                    ))
+                }
+            }
+
+            // string += anything -> string append
+            Value::Str(s) => {
+                let mut s_mut = s.borrow_mut();
+                s_mut.push_str(rhs.to_string().as_str());
+                // return same string value (Rc)
+                Ok(Value::Str(s.clone()))
+            }
+
+            // list += elem -> push
+            Value::List(vec) => {
+                vec.borrow_mut().push(rhs);
+                Ok(Value::List(vec.clone()))
+            }
+
+            // you might want to support ObjInstance here, etc.
+            _ => Err(RuntimeEvent::error(
+                "invalid left-hand side for '+='".into(),
+                cursor,
+            )),
+        }
+    }
+
+    /// v -= rhs
+    pub fn sub_assign(&self, rhs: Value, cursor: Cursor) -> EvalResult<Value> {
+        match self {
+            Value::Num(n) => {
+                if let Value::Num(m) = rhs {
+                    Ok(Value::Num(OrderedFloat(n.0 - m.0)))
+                } else {
+                    Err(RuntimeEvent::error(
+                        "cannot sub-assign non-number from number".into(),
+                        cursor,
+                    ))
+                }
+            }
+
+            // TODO: list -= ???
+            // TODO: string -= ???
+            _ => Err(RuntimeEvent::error(
+                "invalid left-hand side for '-='".into(),
+                cursor,
+            )),
+        }
     }
 }
 

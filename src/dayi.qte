@@ -12,3 +12,20 @@ end
 
 print(fibo1)
 
+# other
+
+obj Pos do
+    init(x, y) do
+        self.x = x
+        self.y = y
+    end
+
+    printpos(self) do
+        print(self.x)
+        print(self.y)
+    end
+end
+
+var pos = Pos(10, 20)
+pos.printpos()
+

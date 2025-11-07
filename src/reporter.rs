@@ -55,7 +55,7 @@ impl Reporter {
             "|".blue(),
             src.lines[line]
         );
-        print!("     {}{}", " ".repeat(cursor.col), "^ here: ".yellow());
+        print!("   {}{}", " ".repeat(cursor.col), "^ here: ".yellow());
         if let Some(estr) = expected {
             print!("expected '{}'", estr);
             if let Some(fstr) = found {

@@ -2,25 +2,112 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     evaluator::{
+        env::Env,
         function::Function,
         runtime_err::{EvalResult, RuntimeEvent},
         value::{Callable, Value},
     },
     lexer::cursor::Cursor,
+    parser::stmt::StmtKind,
 };
+
+#[derive(Debug, Clone)]
+pub enum Method {
+    User(Function),
+    Native(NativeMethod),
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeMethod {
+    pub callable: Rc<dyn Callable>,
+    pub bound: bool,
+    pub bind: Option<Value>,
+}
+
+impl NativeMethod {
+    pub fn new(callable: Rc<dyn Callable>, bound: bool) -> Self {
+        Self {
+            callable,
+            bound,
+            bind: None,
+        }
+    }
+}
+
+impl Callable for NativeMethod {
+    fn name(&self) -> &str {
+        self.callable.name()
+    }
+
+    fn arity(&self) -> usize {
+        self.callable.arity()
+    }
+
+    fn call(
+        &self,
+        evaluator: &mut crate::evaluator::Evaluator,
+        mut args: Vec<Value>,
+    ) -> EvalResult<Value> {
+        if let Some(bind) = &self.bind {
+            args.insert(0, bind.clone());
+        }
+        self.callable.call(evaluator, args)
+    }
+}
+
+impl Method {
+    pub fn bind(self, val: Value) -> Method {
+        if let Value::ObjInstance(_) = val {
+            if let Method::User(func) = self {
+                if let StmtKind::Fn { name, bound, .. } = func.declr.kind.clone() {
+                    let env = Env::enclosed(func.closure.clone());
+                    if bound || name == "init" {
+                        env.borrow_mut().define("self".to_string(), val);
+                    }
+                    return Method::User(Function::new(func.declr, env, bound));
+                }
+                unreachable!();
+            }
+
+            if let Method::Native(func) = self {
+                let bind = if func.bound { Some(val) } else { None };
+                return Method::Native(NativeMethod {
+                    callable: func.callable,
+                    bound: true,
+                    bind,
+                });
+            }
+        }
+        unreachable!("Non-obj value passed to Method::bind(val)");
+    }
+
+    pub fn get_callable(&self) -> Rc<dyn Callable> {
+        return match self {
+            Method::User(func) => Rc::new(func.clone()),
+            Method::Native(func) => Rc::new(func.clone()),
+        };
+    }
+
+    pub fn get_bound(&self) -> bool {
+        return match self {
+            Method::User(func) => func.bound,
+            Method::Native(func) => func.bound,
+        };
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Object {
     pub name: String,
-    pub methods: HashMap<String, Function>,
+    pub methods: HashMap<String, Method>,
 }
 
 impl Object {
-    pub fn new(name: String, methods: HashMap<String, Function>) -> Self {
+    pub fn new(name: String, methods: HashMap<String, Method>) -> Self {
         Self { name, methods }
     }
 
-    fn find_method(&self, name: String) -> Option<Function> {
+    fn find_method(&self, name: String) -> Option<Method> {
         self.methods.get(&name).cloned()
     }
 }
@@ -32,7 +119,10 @@ impl Callable for Object {
 
     fn arity(&self) -> usize {
         if let Some(init) = self.find_method("init".to_string()) {
-            return init.arity();
+            return match init {
+                Method::User(func) => func.arity(),
+                Method::Native(func) => func.arity(),
+            };
         }
 
         0
@@ -46,7 +136,9 @@ impl Callable for Object {
         let inst = Value::ObjInstance(Rc::new(RefCell::new(Instance::new(self.clone()))));
 
         if let Some(init) = self.find_method("init".to_string()) {
-            init.bind_method(inst.clone()).call(evaluator, args)?;
+            init.bind(inst.clone())
+                .get_callable()
+                .call(evaluator, args)?;
         }
 
         Ok(inst)
@@ -55,7 +147,7 @@ impl Callable for Object {
 
 #[derive(Debug, Clone)]
 pub struct Instance {
-    obj: Object,
+    pub obj: Object,
     fields: HashMap<String, Value>,
 }
 
@@ -72,10 +164,9 @@ impl Instance {
             return Ok(val.clone());
         }
 
-        if let Some(func) = self.obj.find_method(name.clone()) {
-            let new_func =
-                func.bind_method(Value::ObjInstance(Rc::new(RefCell::new(self.clone()))));
-            return Ok(Value::Callable(Rc::new(new_func)));
+        if let Some(method) = self.obj.find_method(name.clone()) {
+            let bound_method = method.bind(Value::ObjInstance(Rc::new(RefCell::new(self.clone()))));
+            return Ok(Value::Callable(bound_method.get_callable()));
         }
 
         Err(RuntimeEvent::error(

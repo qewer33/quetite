@@ -2,23 +2,27 @@ use crate::{
     evaluator::{
         Evaluator,
         env::{Env, EnvPtr},
-        object::Instance,
         runtime_err::{EvalResult, RuntimeEvent},
         value::{Callable, Value},
-    }, lexer::token::KeywordKind, parser::stmt::{Stmt, StmtKind}
+    },
+    parser::stmt::{Stmt, StmtKind},
 };
 
 #[derive(Debug, Clone)]
 pub struct Function {
     pub declr: Stmt,
     pub closure: EnvPtr,
-    pub bound: bool
+    pub bound: bool,
 }
 
 impl Function {
     pub fn new(declr: Stmt, closure: EnvPtr, bound: bool) -> Self {
         if let StmtKind::Fn { .. } = declr.clone().kind {
-            return Self { declr, closure, bound };
+            return Self {
+                declr,
+                closure,
+                bound,
+            };
         }
         unreachable!("Non-fn statement passed as declaration to Function::new(declr)");
     }
@@ -27,7 +31,7 @@ impl Function {
         if let Value::ObjInstance(_) = val {
             if let StmtKind::Fn { name, bound, .. } = self.declr.kind.clone() {
                 let env = Env::enclosed(self.closure.clone());
-                if bound || name == "init"  {
+                if bound || name == "init" {
                     env.borrow_mut().define("self".to_string(), val);
                 }
                 return Function::new(self.declr, env, bound);
