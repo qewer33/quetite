@@ -247,11 +247,9 @@ impl<'a> Parser<'a> {
         if self.match_keyword(KeywordKind::While) {
             return self.while_stmt(None);
         }
-        /*
         if self.match_keyword(KeywordKind::For) {
             return self.for_stmt();
         }
-        */
 
         self.expr_stmt()
     }
@@ -284,6 +282,47 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn for_stmt(&mut self) -> ParseResult<Stmt> {
+        let item_ident = self.consume(
+            TokenKindDiscriminants::Identifier,
+            "expected item identifier after 'for'",
+        )?;
+        let item = if let TokenKind::Identifier(name) = item_ident.kind {
+            name
+        } else {
+            unreachable!()
+        };
+
+        let mut index: Option<String> = None;
+        if self.match_tokens(vec![TokenKindDiscriminants::Comma]) {
+            let index_ident = self.consume(
+                TokenKindDiscriminants::Identifier,
+                "expected index identifier after ','",
+            )?;
+            index = if let TokenKind::Identifier(name) = index_ident.kind {
+                Some(name)
+            } else {
+                unreachable!()
+            };
+        }
+
+        self.consume_keyword(KeywordKind::In, "expected 'in' after variables")?;
+
+        let iter = self.expr()?;
+
+        self.consume_keyword(KeywordKind::Do, "expected 'do' after for statement")?;
+        let body = self.block_stmt()?;
+
+        let cursor = iter.cursor.clone();
+        Ok(
+            Stmt::new(
+                StmtKind::For { item, index, iter, body: Box::new(body) },
+                cursor
+            )
+        )
+        
+    }
+
     fn while_stmt(&mut self, declr: Option<Box<Stmt>>) -> ParseResult<Stmt> {
         let condition = self.expr()?;
         let step: Option<Expr> = if self.match_keyword(KeywordKind::Step) {
@@ -303,72 +342,6 @@ impl<'a> Parser<'a> {
             self.previous().cursor,
         ))
     }
-
-    /*
-    fn for_stmt(&mut self) -> ParseResult<Stmt> {
-        // INIT (optional)
-        let init: Option<Stmt> = if self.check_keyword(KeywordKind::While)
-            || self.check_keyword(KeywordKind::Do)
-            || self.check_keyword(KeywordKind::Step)
-        {
-            None
-        } else if self.match_keyword(KeywordKind::Var) {
-            Some(self.var_declr(false)?)
-        } else {
-            let e = self.assignment()?; // or expr(); but assignment is fine/highest you need
-            Some(Stmt::new(StmtKind::Expr(e), self.previous().cursor))
-        };
-
-        // CONDITION (optional)
-        let condition = if self.match_keyword(KeywordKind::While) {
-            self.assignment()? // parse the expression after 'while'
-        } else {
-            Expr::new(
-                ExprKind::Literal(LiteralType::Bool(true)),
-                self.previous().cursor,
-            )
-        };
-
-        // INCREMENT (optional)
-        let incr: Option<Expr> = if self.match_keyword(KeywordKind::Step) {
-            Some(self.assignment()?)
-        } else {
-            None
-        };
-
-        // BODY
-        self.consume_keyword(KeywordKind::Do, "expected 'do' before loop body")?;
-        let mut body = self.block_stmt()?;
-
-        // Desugar: { init; while (condition) { body; incr; } }
-        if let Some(e) = incr {
-            body = Stmt::new(
-                StmtKind::Block(vec![
-                    body,
-                    Stmt::new(StmtKind::Expr(e), self.previous().cursor),
-                ]),
-                self.previous().cursor,
-            );
-        }
-
-        let while_stmt = Stmt::new(
-            StmtKind::While {
-                condition,
-                body: Box::new(body),
-            },
-            self.previous().cursor,
-        );
-
-        if let Some(init_stmt) = init {
-            Ok(Stmt::new(
-                StmtKind::Block(vec![init_stmt, while_stmt]),
-                self.previous().cursor,
-            ))
-        } else {
-            Ok(while_stmt)
-        }
-    }
-    */
 
     fn return_stmt(&mut self) -> ParseResult<Stmt> {
         let mut val: Option<Expr> = None;
@@ -624,7 +597,7 @@ impl<'a> Parser<'a> {
     }
 
     fn call(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.list()?;
+        let mut expr = self.range()?;
 
         loop {
             if self.match_tokens(vec![TokenKindDiscriminants::LParen]) {
@@ -695,6 +668,35 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    fn range(&mut self) -> ParseResult<Expr> {
+        let start = self.list()?;
+
+        if self.match_tokens(vec![
+            TokenKindDiscriminants::Range,
+            TokenKindDiscriminants::RangeEq,
+        ]) {
+            let inclusive = self.previous().kind == TokenKind::RangeEq;
+            let end = self.expr()?;
+
+            let mut step: Option<Box<Expr>> = None;
+            if self.match_keyword(KeywordKind::Step) {
+                step = Some(Box::new(self.expr()?));
+            }
+
+            return Ok(Expr::new(
+                ExprKind::Range {
+                    start: Box::new(start),
+                    end: Box::new(end),
+                    inclusive,
+                    step,
+                },
+                self.current().cursor,
+            ));
+        }
+
+        Ok(start)
+    }
+
     fn list(&mut self) -> ParseResult<Expr> {
         if let TokenKind::LBracket = self.current().kind {
             self.next();
@@ -733,7 +735,7 @@ impl<'a> Parser<'a> {
                 ));
             }
         }
-        if self.match_tokens(vec![TokenKindDiscriminants::NULL]) {
+        if self.match_tokens(vec![TokenKindDiscriminants::Null]) {
             return Ok(Expr::new(
                 ExprKind::Literal(LiteralType::Null),
                 self.previous().cursor,

@@ -9,6 +9,12 @@ use crate::lexer::{
 pub enum ExprKind {
     Literal(LiteralType),
     List(Vec<Expr>),
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        inclusive: bool,
+        step: Option<Box<Expr>>,
+    },
     Assign {
         name: String,
         op: AssignOp,

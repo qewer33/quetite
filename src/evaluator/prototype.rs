@@ -1,6 +1,7 @@
 use ordered_float::OrderedFloat;
 
 use crate::native_fn;
+use colored::Colorize;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
@@ -34,6 +35,21 @@ macro_rules! proto_method {
         });
 
         $proto.add_method($str_name.to_string(), std::rc::Rc::new($name));
+    };
+}
+
+// Macro for color/style methods
+macro_rules! str_color_method {
+    ($proto:ident, $name:ident, $method_name:expr, $colorize:ident) => {
+        proto_method!($proto, $name, $method_name, 0, |_evaluator, args, recv| {
+            if let Value::Str(s) = recv {
+                Ok(Value::Str(Rc::new(RefCell::new(
+                    s.borrow().$colorize().to_string(),
+                ))))
+            } else {
+                Ok(recv.clone())
+            }
+        });
     };
 }
 
@@ -120,6 +136,64 @@ impl ValuePrototypes {
             unreachable!()
         });
 
+        // insert(index, value): inserts value at index
+        proto_method!(proto, ListInsert, "insert", 2, |_evaluator, args, recv| {
+            if let Value::List(list) = recv {
+                if let Value::Num(n) = args[1] {
+                    list.borrow_mut().insert(n.0 as usize, args[2].clone());
+                }
+                return Ok(Value::Null);
+            }
+            unreachable!()
+        });
+
+        // remove(index): removes the element at index
+        proto_method!(proto, ListRemove, "remove", 1, |_evaluator, args, recv| {
+            if let Value::List(list) = recv {
+                if let Value::Num(n) = args[1] {
+                    list.borrow_mut().remove(n.0 as usize);
+                }
+                return Ok(Value::Null);
+            }
+            unreachable!()
+        });
+
+        // last(): returns the last element
+        proto_method!(proto, ListLast, "last", 0, |_evaluator, args, recv| {
+            if let Value::List(list) = recv {
+                if let Some(val) = list.borrow().last() {
+                    return Ok(val.clone());
+                }
+                return Ok(Value::Null);
+            }
+            unreachable!()
+        });
+
+        // first(): returns the first element
+        proto_method!(proto, ListFirst, "first", 0, |_evaluator, args, recv| {
+            if let Value::List(list) = recv {
+                if let Some(val) = list.borrow().first() {
+                    return Ok(val.clone());
+                }
+                return Ok(Value::Null);
+            }
+            unreachable!()
+        });
+
+        // contains(vals): returns true if list contains value, false otherwise
+        proto_method!(
+            proto,
+            ListContains,
+            "contains",
+            1,
+            |_evaluator, args, recv| {
+                if let Value::List(list) = recv {
+                    return Ok(Value::Bool(list.borrow().contains(&args[1])));
+                }
+                unreachable!()
+            }
+        );
+
         proto
     }
 
@@ -149,6 +223,45 @@ impl ValuePrototypes {
             }
         );
 
+        // Foreground colors
+        str_color_method!(proto, StrBlack, "black", black);
+        str_color_method!(proto, StrRed, "red", red);
+        str_color_method!(proto, StrGreen, "green", green);
+        str_color_method!(proto, StrYellow, "yellow", yellow);
+        str_color_method!(proto, StrBlue, "blue", blue);
+        str_color_method!(proto, StrMagenta, "magenta", magenta);
+        str_color_method!(proto, StrCyan, "cyan", cyan);
+        str_color_method!(proto, StrWhite, "white", white);
+
+        // Bright colors
+        str_color_method!(proto, StrBrightBlack, "bright_black", bright_black);
+        str_color_method!(proto, StrBrightRed, "bright_red", bright_red);
+        str_color_method!(proto, StrBrightGreen, "bright_green", bright_green);
+        str_color_method!(proto, StrBrightYellow, "bright_yellow", bright_yellow);
+        str_color_method!(proto, StrBrightBlue, "bright_blue", bright_blue);
+        str_color_method!(proto, StrBrightMagenta, "bright_magenta", bright_magenta);
+        str_color_method!(proto, StrBrightCyan, "bright_cyan", bright_cyan);
+        str_color_method!(proto, StrBrightWhite, "bright_white", bright_white);
+
+        // Styles
+        str_color_method!(proto, StrBold, "bold", bold);
+        str_color_method!(proto, StrDim, "dim", dimmed);
+        str_color_method!(proto, StrItalic, "italic", italic);
+        str_color_method!(proto, StrUnderline, "underline", underline);
+        str_color_method!(proto, StrBlink, "blink", blink);
+        str_color_method!(proto, StrReverse, "reverse", reversed);
+        str_color_method!(proto, StrStrikethrough, "strikethrough", strikethrough);
+
+        // Background colors
+        str_color_method!(proto, StrOnBlack, "on_black", on_black);
+        str_color_method!(proto, StrOnRed, "on_red", on_red);
+        str_color_method!(proto, StrOnGreen, "on_green", on_green);
+        str_color_method!(proto, StrOnYellow, "on_yellow", on_yellow);
+        str_color_method!(proto, StrOnBlue, "on_blue", on_blue);
+        str_color_method!(proto, StrOnMagenta, "on_magenta", on_magenta);
+        str_color_method!(proto, StrOnCyan, "on_cyan", on_cyan);
+        str_color_method!(proto, StrOnWhite, "on_white", on_white);
+
         proto
     }
 
@@ -168,6 +281,14 @@ impl ValuePrototypes {
             unreachable!()
         });
 
+        // to_str() -> Num: returns the number as an Str
+        proto_method!(proto, NumToStr, "to_str", 0, |_evaluator, args, recv| {
+            if let Value::Num(num) = recv {
+                return Ok(Value::Str(Rc::new(RefCell::new(num.to_string()))));
+            }
+            unreachable!()
+        });
+
         proto
     }
 
@@ -179,8 +300,8 @@ impl ValuePrototypes {
             Ok(Value::Str(Rc::new(RefCell::new(recv.get_type()))))
         });
 
-        // as_num() -> Num: returns 1 if true, 0 if false
-        proto_method!(proto, BoolAsNum, "as_num", 0, |_evaluator, args, recv| {
+        // to_num() -> Num: returns 1 if true, 0 if false
+        proto_method!(proto, BoolToNum, "to_num", 0, |_evaluator, args, recv| {
             if let Value::Bool(b) = recv {
                 if *b {
                     return Ok(Value::Num(OrderedFloat(1.0)));

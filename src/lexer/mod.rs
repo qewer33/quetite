@@ -189,6 +189,16 @@ impl Lexer {
                 Some(TokenKind::Comma)
             }
             '.' => {
+                if self.consume('.') {
+                    if self.consume('=') {
+                        self.next();
+                        return Some(TokenKind::RangeEq);
+                    }
+
+                    self.next();
+                    return Some(TokenKind::Range);
+                }
+
                 self.next();
                 Some(TokenKind::Dot)
             }
@@ -243,7 +253,7 @@ impl Lexer {
                 let mut str = String::new();
 
                 // symbols accepted inside identifiers
-                let accepted_symbols = ['_', '-'];
+                let accepted_symbols = ['_'];
                 loop {
                     str.push(self.current());
 
@@ -258,6 +268,11 @@ impl Lexer {
                 if let Ok(kind) = KeywordKind::from_str(str.as_str()) {
                     return Some(TokenKind::Keyword(kind));
                 }
+
+                if str == "Null".to_string() {
+                    return Some(TokenKind::Null);
+                }
+
                 Some(TokenKind::Identifier(str))
             }
         };

@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, io};
 
 use crate::{evaluator::value::Value, lexer::cursor::Cursor};
 
@@ -37,6 +37,15 @@ impl RuntimeEvent {
     }
     pub fn is_return(&self) -> bool {
         matches!(self, RuntimeEvent::Return(_))
+    }
+}
+
+impl From<io::Error> for RuntimeEvent {
+    fn from(err: io::Error) -> Self {
+        RuntimeEvent::error(
+            format!("IO error: {}", err),
+            Cursor::new(),
+        )
     }
 }
 

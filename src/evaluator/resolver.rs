@@ -136,6 +136,7 @@ impl<'a> Resolver<'a> {
             StmtKind::Var { .. } => self.resolve_stmt_var(stmt),
             StmtKind::Block(_) => self.resolve_stmt_block(stmt, false),
             StmtKind::If { .. } => self.resolve_stmt_if(stmt),
+            StmtKind::For { .. } => self.resolve_stmt_for(stmt),
             StmtKind::While { .. } => self.resolve_stmt_while(stmt),
             StmtKind::Fn { .. } => self.resolve_stmt_fn(stmt),
             StmtKind::Obj { .. } => self.resolve_stmt_obj(stmt),
@@ -203,6 +204,40 @@ impl<'a> Resolver<'a> {
             return Ok(());
         }
         unreachable!("Non-if statement passed to Resolver::resolve_stmt_if");
+    }
+
+    fn resolve_stmt_for(&mut self, stmt: &Stmt) -> ResolveResult {
+        if let StmtKind::For {
+            item,
+            index,
+            iter,
+            body,
+        } = &stmt.kind
+        {
+            self.resolve_expr(iter)?;
+
+            // 2) loop body has its own scope
+            self.begin_scope();
+
+            // 3) declare+define the element variable
+            self.declare(item.clone(), stmt.cursor);
+            self.define(item.clone(), stmt.cursor);
+
+            // 4) if there's an index variable, declare+define that too
+            if let Some(idx_name) = index {
+                self.declare(idx_name.clone(), stmt.cursor);
+                self.define(idx_name.clone(), stmt.cursor);
+            }
+
+            // 5) resolve the body in that scope
+            self.resolve_stmt_block(body, true)?;
+
+            // 6) pop scope (will also warn on unused loop vars if you keep that)
+            self.end_scope();
+
+            return Ok(());
+        }
+        unreachable!("Non-for statement passed to Resolver::resolve_stmt_for");
     }
 
     fn resolve_stmt_while(&mut self, stmt: &Stmt) -> ResolveResult {
@@ -294,6 +329,16 @@ impl<'a> Resolver<'a> {
             ExprKind::Literal(_) => Ok(()),
             ExprKind::List(list) => {
                 for expr in list {
+                    self.resolve_expr(expr)?;
+                }
+                Ok(())
+            }
+            ExprKind::Range {
+                start, end, step, ..
+            } => {
+                self.resolve_expr(start)?;
+                self.resolve_expr(end)?;
+                if let Some(expr) = step {
                     self.resolve_expr(expr)?;
                 }
                 Ok(())

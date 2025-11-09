@@ -9,6 +9,7 @@ pub enum TokenKind {
     Num(String),
     Bool(bool),
     Str(String),
+    Null,
     // Assign
     Assign,
     AddAssign,
@@ -40,10 +41,11 @@ pub enum TokenKind {
     RBrace,
     Comma,
     Dot,
+    Range,
+    RangeEq,
     // Other
     Keyword(KeywordKind),
     Identifier(String),
-    NULL,
     EOL,
     EOF,
 }
@@ -90,11 +92,13 @@ impl ToString for TokenKindDiscriminants {
             TokenKindDiscriminants::RBrace => "RBrace",
             TokenKindDiscriminants::Comma => "Comma",
             TokenKindDiscriminants::Dot => "Dot",
+            TokenKindDiscriminants::Range => "Range",
+            TokenKindDiscriminants::RangeEq => "RangeEq",
 
             // Other
             TokenKindDiscriminants::Keyword => "Keyword",
             TokenKindDiscriminants::Identifier => "Identifier",
-            TokenKindDiscriminants::NULL => "NULL",
+            TokenKindDiscriminants::Null => "Null",
             TokenKindDiscriminants::EOL => "EOL",
             TokenKindDiscriminants::EOF => "EOF",
         }
@@ -119,6 +123,7 @@ pub enum KeywordKind {
     And,
     Or,
     Step,
+    In,
     Fn,
     Obj,
     Err,
@@ -142,6 +147,7 @@ impl ToString for KeywordKind {
             KeywordKind::And => "and",
             KeywordKind::Or => "or",
             KeywordKind::Step => "step",
+            KeywordKind::In => "in",
             KeywordKind::Fn => "fn",
             KeywordKind::Obj => "obj",
             KeywordKind::Err => "err",
@@ -170,6 +176,7 @@ impl FromStr for KeywordKind {
             "and" => Ok(KeywordKind::And),
             "or" => Ok(KeywordKind::Or),
             "step" => Ok(KeywordKind::Step),
+            "in" => Ok(KeywordKind::In),
             "fn" => Ok(KeywordKind::Fn),
             "obj" => Ok(KeywordKind::Obj),
             "err" => Ok(KeywordKind::Err),

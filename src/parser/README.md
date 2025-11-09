@@ -19,22 +19,20 @@ varDeclrHeader → "var" IDENTIFIER "=" expression ;
 
 statement      → exprStmt
                | ifStmt
-               | forStmt
                | returnStmt
                | breakStmt
                | continueStmt
+               | forStmt
                | whileStmt
                | block ;
 
 exprStmt       → expression EOL ;
 ifStmt         → "if" expression statement
                ( "else" statement )? ;
-forStmt        → "for" ( varDecl | exprStmt | "and" )
-                 expression? "and"
-                 expression? statement ;
 returnStmt     → "return" expression EOL ;
 breakStmt      → "break" EOL ; 
 continueStmt   → "continue" EOL ; 
+forStmt        → "for" IDENTIFIER ( "," IDENTIFIER )? "in" expression "do" statement ;
 whileStmt      → varDeclrHeader? "while" expression ("step" assignment)? statement ;
 block          → "do" declaration "end" ;
 
@@ -50,6 +48,7 @@ factor         → unary ( ( "/" | "*" | "**" | "??" ) unary )* ;
 unary          → ( "!" | "-" ) unary | call ;
 arguments      → expression ( "," expression )* ;
 call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
+range          → expr ( ".." | "..=" ) expr ( "step" expr )? ; 
 list           - "[" arguments? "]" ;
 primary        → NUMBER | STRING | "true" | "false" | "nil"
                | "(" expression ")"

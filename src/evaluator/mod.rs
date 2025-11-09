@@ -16,7 +16,7 @@ use crate::{
         env::{Env, EnvPtr},
         function::Function,
         natives::Natives,
-        object::{Method, Object},
+        object::{Instance, Method, Object},
         prototype::{BoundMethod, ValuePrototypes},
         runtime_err::{EvalResult, RuntimeErr, RuntimeEvent},
         value::{Callable, Value},
@@ -78,6 +78,7 @@ impl<'a> Evaluator<'a> {
             StmtKind::Var { .. } => self.eval_stmt_var(stmt),
             StmtKind::Block(_) => self.eval_stmt_block(stmt, Env::enclosed(self.env.clone())),
             StmtKind::If { .. } => self.eval_stmt_if(stmt),
+            StmtKind::For { .. } => self.eval_stmt_for(stmt),
             StmtKind::While { .. } => self.eval_stmt_while(stmt),
             StmtKind::Fn { .. } => self.eval_stmt_fn(stmt),
             StmtKind::Obj { .. } => self.eval_stmt_obj(stmt),
@@ -121,6 +122,74 @@ impl<'a> Evaluator<'a> {
             } else if let Some(stmt) = else_branch {
                 self.eval_stmt(stmt)?;
             }
+            return Ok(());
+        }
+        unreachable!("Non-if statement passed to Evaluator::eval_stmt_if");
+    }
+
+    fn eval_stmt_for(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::For {
+            item,
+            index,
+            iter,
+            body,
+        } = &stmt.kind
+        {
+            let iter = self.eval_expr(&iter)?;
+
+            match iter {
+                Value::List(rc_list) => {
+                    let len = rc_list.borrow().len();
+
+                    for i in 0..len {
+                        let elem = rc_list.borrow()[i].clone();
+
+                        let loop_env = Env::enclosed(self.env.clone());
+                        loop_env.borrow_mut().define(item.clone(), elem);
+
+                        if let Some(idx_name) = index {
+                            loop_env
+                                .borrow_mut()
+                                .define(idx_name.clone(), Value::Num(OrderedFloat(i as f64)));
+                        }
+
+                        match self.eval_stmt_block(body, loop_env) {
+                            Ok(_) => {}
+                            Err(err) if err.is_continue() => continue,
+                            Err(err) if err.is_break() => break,
+                            Err(err) => return Err(err),
+                        }
+                    }
+                }
+                Value::Str(rc_str) => {
+                    let chars: Vec<char> = rc_str.borrow().chars().collect();
+                    for (i, ch) in chars.into_iter().enumerate() {
+                        let loop_env = Env::enclosed(self.env.clone());
+                        loop_env.borrow_mut().define(
+                            item.clone(),
+                            Value::Str(Rc::new(RefCell::new(ch.to_string()))),
+                        );
+                        if let Some(idx_name) = index {
+                            loop_env
+                                .borrow_mut()
+                                .define(idx_name.clone(), Value::Num(OrderedFloat(i as f64)));
+                        }
+                        match self.eval_stmt_block(body, loop_env) {
+                            Ok(_) => {}
+                            Err(err) if err.is_continue() => continue,
+                            Err(err) if err.is_break() => break,
+                            Err(err) => return Err(err),
+                        }
+                    }
+                }
+                _ => {
+                    return Err(RuntimeEvent::error(
+                        "only List and Str values are iterable".into(),
+                        stmt.cursor,
+                    ));
+                }
+            }
+
             return Ok(());
         }
         unreachable!("Non-if statement passed to Evaluator::eval_stmt_if");
@@ -244,6 +313,7 @@ impl<'a> Evaluator<'a> {
             ExprKind::Unary { .. } => self.eval_expr_unary(expr),
             ExprKind::Literal(_) => self.eval_expr_literal(expr),
             ExprKind::List(_) => self.eval_expr_list(expr),
+            ExprKind::Range { .. } => self.eval_expr_range(expr),
             ExprKind::Index { .. } => self.eval_expr_index(expr),
             ExprKind::IndexSet { .. } => self.eval_expr_index_set(expr),
             ExprKind::Call { .. } => self.eval_expr_call(expr),
@@ -334,6 +404,70 @@ impl<'a> Evaluator<'a> {
         unreachable!("Non-list passed to Evaluator::eval_expr_list");
     }
 
+    fn eval_expr_range(&mut self, expr: &Expr) -> EvalResult<Value> {
+        if let ExprKind::Range {
+            start,
+            end,
+            inclusive,
+            step,
+        } = &expr.kind
+        {
+            let mut values: Vec<Value> = vec![];
+
+            let mut nstart: f64 = 0.0;
+            let val = self.eval_expr(start)?;
+            if let Value::Num(n) = val {
+                nstart = n.0;
+            } else {
+                return Err(RuntimeEvent::error(
+                    "range start must be a Num".into(),
+                    expr.cursor,
+                ));
+            }
+
+            let mut nend: f64 = 0.0;
+            let val = self.eval_expr(end)?;
+            if let Value::Num(n) = val {
+                nend = n.0;
+            } else {
+                return Err(RuntimeEvent::error(
+                    "range end must be a Num".into(),
+                    expr.cursor,
+                ));
+            }
+
+            let mut nstep: f64 = 1.0;
+            if let Some(expr) = step {
+                let val = self.eval_expr(expr)?;
+                if let Value::Num(n) = val {
+                    nstep = n.0;
+                } else {
+                    return Err(RuntimeEvent::error(
+                        "range step must be a Num".into(),
+                        expr.cursor,
+                    ));
+                }
+            }
+
+            let incr = nstart < nend;
+            let mut i = nstart;
+            if *inclusive {
+                while i <= nend {
+                    values.push(Value::Num(OrderedFloat(i)));
+                    if incr { i += nstep } else { i -= nstep }
+                }
+            } else {
+                while i < nend {
+                    values.push(Value::Num(OrderedFloat(i)));
+                    if incr { i += nstep } else { i -= nstep }
+                }
+            }
+
+            return Ok(Value::List(Rc::new(RefCell::new(values))));
+        }
+        unreachable!("Non-range passed to Evaluator::eval_expr_range");
+    }
+
     fn eval_expr_index(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Index { obj, index } = &expr.kind {
             let base_val = self.eval_expr(obj)?;
@@ -350,18 +484,19 @@ impl<'a> Evaluator<'a> {
             };
 
             return match base_val {
-                Value::List(items) => {
-                    if idx >= items.borrow().len() {
+                Value::List(rc_items) => {
+                    let items = rc_items.borrow();
+                    if idx >= items.len() {
                         return Err(RuntimeEvent::error(
                             format!(
                                 "list index {} out of bounds (len = {})",
                                 idx,
-                                items.borrow().len()
+                                items.len()
                             ),
                             expr.cursor,
                         ));
                     }
-                    Ok(items.borrow()[idx].clone())
+                    Ok(items[idx].clone())
                 }
                 Value::Str(s) => {
                     let chars: Vec<char> = s.borrow().chars().collect();
@@ -498,7 +633,7 @@ impl<'a> Evaluator<'a> {
 
             // instance methods
             if let Value::ObjInstance(inst) = val {
-                return Ok(inst.borrow().get(name.clone(), expr.cursor)?);
+                return Ok(Instance::get_rc(inst.clone(), name.clone(), expr.cursor)?);
             }
 
             // static methods
@@ -546,19 +681,26 @@ impl<'a> Evaluator<'a> {
     }
 
     fn eval_expr_set(&mut self, expr: &Expr) -> EvalResult<Value> {
-        if let ExprKind::Set {
-            obj,
-            name,
-            op: _,
-            val,
-        } = &expr.kind
-        {
+        if let ExprKind::Set { obj, name, op, val } = &expr.kind {
             let obj = self.eval_expr(obj)?;
 
             if let Value::ObjInstance(inst) = obj {
-                let set_val = self.eval_expr(val)?;
-                inst.borrow_mut().set(name.clone(), set_val.clone());
-                return Ok(set_val);
+                let rhs_val = self.eval_expr(val)?;
+
+                let new_val = match op {
+                    AssignOp::Value => rhs_val.clone(),
+                    AssignOp::Add => {
+                        let current = Instance::get_rc(inst.clone(), name.clone(), expr.cursor)?;
+                        current.add_assign(rhs_val, expr.cursor)?
+                    }
+                    AssignOp::Sub => {
+                        let current = Instance::get_rc(inst.clone(), name.clone(), expr.cursor)?;
+                        current.sub_assign(rhs_val, expr.cursor)?
+                    }
+                };
+
+                inst.borrow_mut().set(name.clone(), new_val.clone());
+                return Ok(new_val);
             }
 
             return Err(RuntimeEvent::error(

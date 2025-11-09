@@ -22,6 +22,12 @@ pub enum StmtKind {
         step: Option<Expr>,
         body: Box<Stmt>,
     },
+    For {
+        item: String,
+        index: Option<String>,
+        iter: Expr,
+        body: Box<Stmt>
+    },
     Fn {
         name: String,
         params: Vec<String>,
