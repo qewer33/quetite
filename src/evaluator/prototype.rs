@@ -1,6 +1,6 @@
 use ordered_float::OrderedFloat;
 
-use crate::native_fn;
+use crate::{evaluator::runtime_err::RuntimeErr, native_fn};
 use colored::Colorize;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -20,9 +20,9 @@ macro_rules! proto_method {
         $name:ident,
         $str_name:expr,
         $arity:expr,
-        |$evaluator:ident, $args:ident, $recv:ident| $body:block
+        |$evaluator:ident, $args:ident, $cursor:ident, $recv:ident| $body:block
     ) => {
-        native_fn!($name, $str_name, $arity, |$evaluator, $args| {
+        native_fn!($name, $str_name, $arity, |$evaluator, $args, $cursor| {
             // receiver is always arg0
             let $recv = $args.get(0).ok_or_else(|| {
                 RuntimeEvent::error(
@@ -41,21 +41,28 @@ macro_rules! proto_method {
 // Macro for color/style methods
 macro_rules! str_color_method {
     ($proto:ident, $name:ident, $method_name:expr, $colorize:ident) => {
-        proto_method!($proto, $name, $method_name, 0, |_evaluator, args, recv| {
-            if let Value::Str(s) = recv {
-                Ok(Value::Str(Rc::new(RefCell::new(
-                    s.borrow().$colorize().to_string(),
-                ))))
-            } else {
-                Ok(recv.clone())
+        proto_method!(
+            $proto,
+            $name,
+            $method_name,
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Str(s) = recv {
+                    Ok(Value::Str(Rc::new(RefCell::new(
+                        s.borrow().$colorize().to_string(),
+                    ))))
+                } else {
+                    Ok(recv.clone())
+                }
             }
-        });
+        );
     };
 }
 
 pub struct Prototype {
     pub name: String,
     methods: HashMap<String, Rc<dyn Callable>>,
+    parent: Option<Rc<Prototype>>,
 }
 
 impl Prototype {
@@ -63,6 +70,15 @@ impl Prototype {
         Self {
             name,
             methods: HashMap::new(),
+            parent: None,
+        }
+    }
+
+    pub fn with_parent(name: String, parent: &Rc<Prototype>) -> Self {
+        Self {
+            name,
+            methods: HashMap::new(),
+            parent: Some(Rc::clone(parent)),
         }
     }
 
@@ -71,7 +87,13 @@ impl Prototype {
     }
 
     pub fn get_method(&self, name: String) -> Option<Rc<dyn Callable>> {
-        self.methods.get(&name).cloned()
+        let method = self.methods.get(&name).cloned();
+        if let None = method {
+            if let Some(parent) = &self.parent {
+                return parent.get_method(name);
+            }
+        }
+        method
     }
 }
 
@@ -84,10 +106,11 @@ pub struct ValuePrototypes {
 
 impl ValuePrototypes {
     pub fn new() -> Self {
-        let list = ValuePrototypes::list_proto();
-        let str = ValuePrototypes::str_proto();
-        let num = ValuePrototypes::num_proto();
-        let bool = ValuePrototypes::bool_proto();
+        let value = Rc::new(ValuePrototypes::value_proto());
+        let list = ValuePrototypes::list_proto(&value);
+        let str = ValuePrototypes::str_proto(&value);
+        let num = ValuePrototypes::num_proto(&value);
+        let bool = ValuePrototypes::bool_proto(&value);
         Self {
             list,
             str,
@@ -96,89 +119,173 @@ impl ValuePrototypes {
         }
     }
 
-    pub fn list_proto() -> Prototype {
-        let mut proto = Prototype::new("List".to_string());
+    pub fn value_proto() -> Prototype {
+        let mut proto = Prototype::new("Value".to_string());
 
         // type() -> Str: returns type of the value
-        proto_method!(proto, ListType, "type", 0, |_evaluator, args, recv| {
-            Ok(Value::Str(Rc::new(RefCell::new(recv.get_type()))))
-        });
+        proto_method!(
+            proto,
+            ValueType,
+            "type",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                Ok(Value::Str(Rc::new(RefCell::new(recv.get_type()))))
+            }
+        );
+
+        // type_of(type) -> bool: returns true if type of the value matches type, false otherwise
+        proto_method!(
+            proto,
+            ValueTypeOf,
+            "type_of",
+            1,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Str(str) = &args[1] {
+                    return Ok(Value::Bool(
+                        recv.get_type().to_uppercase() == str.borrow().clone().to_uppercase(),
+                    ));
+                }
+                Ok(Value::Null)
+            }
+        );
+
+        // type_check(type) -> bool: returns true if type of the value matches type, false otherwise
+        proto_method!(
+            proto,
+            ValueTypeCheck,
+            "type_check",
+            1,
+            |_evaluator, args, cursor, recv| {
+                if let Value::Str(str) = &args[1] {
+                    return recv.check_type(str.borrow().clone(), cursor).map(|v| Value::Bool(v));
+                }
+                Ok(Value::Null)
+            }
+        );
+
+        proto
+    }
+
+    pub fn list_proto(value_proto: &Rc<Prototype>) -> Prototype {
+        let mut proto = Prototype::with_parent("List".to_string(), value_proto);
 
         // len() -> Num: returns number of elements
-        proto_method!(proto, ListLen, "len", 0, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                let len = list.borrow().len() as f64;
-                return Ok(Value::Num(len.into()));
+        proto_method!(
+            proto,
+            ListLen,
+            "len",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    let len = list.borrow().len() as f64;
+                    return Ok(Value::Num(len.into()));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // push(value): appends, returns null
-        proto_method!(proto, ListPush, "push", 1, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                let val = args.get(1).cloned().unwrap();
-                list.borrow_mut().push(val);
-                return Ok(Value::Null);
-            }
-            unreachable!()
-        });
-
-        // pop(): removes last, returns it or null
-        proto_method!(proto, ListPop, "pop", 0, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                let mut vec = list.borrow_mut();
-                if let Some(v) = vec.pop() {
-                    return Ok(v);
-                } else {
+        proto_method!(
+            proto,
+            ListPush,
+            "push",
+            1,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    let val = args.get(1).cloned().unwrap();
+                    list.borrow_mut().push(val);
                     return Ok(Value::Null);
                 }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
+
+        // pop(): removes last, returns it or null
+        proto_method!(
+            proto,
+            ListPop,
+            "pop",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    let mut vec = list.borrow_mut();
+                    if let Some(v) = vec.pop() {
+                        return Ok(v);
+                    } else {
+                        return Ok(Value::Null);
+                    }
+                }
+                unreachable!()
+            }
+        );
 
         // insert(index, value): inserts value at index
-        proto_method!(proto, ListInsert, "insert", 2, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                if let Value::Num(n) = args[1] {
-                    list.borrow_mut().insert(n.0 as usize, args[2].clone());
+        proto_method!(
+            proto,
+            ListInsert,
+            "insert",
+            2,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    if let Value::Num(n) = args[1] {
+                        list.borrow_mut().insert(n.0 as usize, args[2].clone());
+                    }
+                    return Ok(Value::Null);
                 }
-                return Ok(Value::Null);
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // remove(index): removes the element at index
-        proto_method!(proto, ListRemove, "remove", 1, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                if let Value::Num(n) = args[1] {
-                    list.borrow_mut().remove(n.0 as usize);
+        proto_method!(
+            proto,
+            ListRemove,
+            "remove",
+            1,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    if let Value::Num(n) = args[1] {
+                        list.borrow_mut().remove(n.0 as usize);
+                    }
+                    return Ok(Value::Null);
                 }
-                return Ok(Value::Null);
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // last(): returns the last element
-        proto_method!(proto, ListLast, "last", 0, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                if let Some(val) = list.borrow().last() {
-                    return Ok(val.clone());
+        proto_method!(
+            proto,
+            ListLast,
+            "last",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    if let Some(val) = list.borrow().last() {
+                        return Ok(val.clone());
+                    }
+                    return Ok(Value::Null);
                 }
-                return Ok(Value::Null);
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // first(): returns the first element
-        proto_method!(proto, ListFirst, "first", 0, |_evaluator, args, recv| {
-            if let Value::List(list) = recv {
-                if let Some(val) = list.borrow().first() {
-                    return Ok(val.clone());
+        proto_method!(
+            proto,
+            ListFirst,
+            "first",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::List(list) = recv {
+                    if let Some(val) = list.borrow().first() {
+                        return Ok(val.clone());
+                    }
+                    return Ok(Value::Null);
                 }
-                return Ok(Value::Null);
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // contains(vals): returns true if list contains value, false otherwise
         proto_method!(
@@ -186,7 +293,7 @@ impl ValuePrototypes {
             ListContains,
             "contains",
             1,
-            |_evaluator, args, recv| {
+            |_evaluator, args, _cursor, recv| {
                 if let Value::List(list) = recv {
                     return Ok(Value::Bool(list.borrow().contains(&args[1])));
                 }
@@ -197,13 +304,8 @@ impl ValuePrototypes {
         proto
     }
 
-    pub fn str_proto() -> Prototype {
-        let mut proto = Prototype::new("Str".to_string());
-
-        // type() -> Str: returns type of the value
-        proto_method!(proto, StrType, "type", 0, |_evaluator, args, recv| {
-            Ok(Value::Str(Rc::new(RefCell::new(recv.get_type()))))
-        });
+    pub fn str_proto(value_proto: &Rc<Prototype>) -> Prototype {
+        let mut proto = Prototype::with_parent("Str".to_string(), value_proto);
 
         // parse_num() -> Num: parses the Str to a Num
         proto_method!(
@@ -211,7 +313,7 @@ impl ValuePrototypes {
             StrParseNum,
             "parse_num",
             0,
-            |_evaluator, args, recv| {
+            |_evaluator, _cursor, args, recv| {
                 if let Value::Str(str) = recv {
                     if let Ok(num) = str.borrow().parse::<f64>() {
                         return Ok(Value::Num(OrderedFloat(num)));
@@ -224,12 +326,18 @@ impl ValuePrototypes {
         );
 
         // len() -> Str: returns the length of the string
-        proto_method!(proto, StrLen, "len", 0, |_evaluator, args, recv| {
-            if let Value::Str(str) = recv {
-                return Ok(Value::Num(OrderedFloat(str.borrow().len() as f64)));
+        proto_method!(
+            proto,
+            StrLen,
+            "len",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Str(str) = recv {
+                    return Ok(Value::Num(OrderedFloat(str.borrow().len() as f64)));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // Foreground colors
         str_color_method!(proto, StrBlack, "black", black);
@@ -273,95 +381,127 @@ impl ValuePrototypes {
         proto
     }
 
-    pub fn num_proto() -> Prototype {
-        let mut proto = Prototype::new("Num".to_string());
-
-        // type() -> Str: returns type of the value
-        proto_method!(proto, NumType, "type", 0, |_evaluator, args, recv| {
-            Ok(Value::Str(Rc::new(RefCell::new(recv.get_type()))))
-        });
+    pub fn num_proto(value_proto: &Rc<Prototype>) -> Prototype {
+        let mut proto = Prototype::with_parent("Num".to_string(), value_proto);
 
         // abs() -> Num: returns absolute value of number
-        proto_method!(proto, NumAbs, "abs", 0, |_evaluator, args, recv| {
-            if let Value::Num(num) = recv {
-                return Ok(Value::Num(OrderedFloat(num.abs())));
+        proto_method!(
+            proto,
+            NumAbs,
+            "abs",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Num(num) = recv {
+                    return Ok(Value::Num(OrderedFloat(num.abs())));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // round() -> Num: returns the number rounded to the nearest integer
-        proto_method!(proto, NumRound, "round", 0, |_evaluator, args, recv| {
-            if let Value::Num(num) = recv {
-                return Ok(Value::Num(OrderedFloat(num.round())));
+        proto_method!(
+            proto,
+            NumRound,
+            "round",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Num(num) = recv {
+                    return Ok(Value::Num(OrderedFloat(num.round())));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // ceil() -> Num: returns the number rounded to the smallest larger integer
-        proto_method!(proto, NumCeil, "ceil", 0, |_evaluator, args, recv| {
-            if let Value::Num(num) = recv {
-                return Ok(Value::Num(OrderedFloat(num.ceil())));
+        proto_method!(
+            proto,
+            NumCeil,
+            "ceil",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Num(num) = recv {
+                    return Ok(Value::Num(OrderedFloat(num.ceil())));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // floor() -> Num: returns the number rounded to the largest smaller integer
-        proto_method!(proto, NumFloor, "floor", 0, |_evaluator, args, recv| {
-            if let Value::Num(num) = recv {
-                return Ok(Value::Num(OrderedFloat(num.floor())));
+        proto_method!(
+            proto,
+            NumFloor,
+            "floor",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Num(num) = recv {
+                    return Ok(Value::Num(OrderedFloat(num.floor())));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // clamp(min, max) -> Num: returns the number clamped between min and max
-        proto_method!(proto, NumClamp, "clamp", 2, |_evaluator, args, recv| {
-            if let Value::Num(num) = recv {
-                let min = if let Value::Num(n) = args[1] {
-                    n.0
-                } else {
-                    return Ok(Value::Null);
-                };
-                let max = if let Value::Num(n) = args[2] {
-                    n.0 
-                } else {
-                    return Ok(Value::Null);
-                };
+        proto_method!(
+            proto,
+            NumClamp,
+            "clamp",
+            2,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Num(num) = recv {
+                    let min = if let Value::Num(n) = args[1] {
+                        n.0
+                    } else {
+                        return Ok(Value::Null);
+                    };
+                    let max = if let Value::Num(n) = args[2] {
+                        n.0
+                    } else {
+                        return Ok(Value::Null);
+                    };
 
-                return Ok(Value::Num(OrderedFloat(num.0.clamp(min, max))));
+                    return Ok(Value::Num(OrderedFloat(num.0.clamp(min, max))));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         // to_str() -> Num: returns the number as an Str
-        proto_method!(proto, NumToStr, "to_str", 0, |_evaluator, args, recv| {
-            if let Value::Num(num) = recv {
-                return Ok(Value::Str(Rc::new(RefCell::new(num.to_string()))));
+        proto_method!(
+            proto,
+            NumToStr,
+            "to_str",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Num(num) = recv {
+                    return Ok(Value::Str(Rc::new(RefCell::new(num.to_string()))));
+                }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         proto
     }
 
-    pub fn bool_proto() -> Prototype {
-        let mut proto = Prototype::new("Bool".to_string());
-
-        // type() -> Str: returns type of the value
-        proto_method!(proto, BoolType, "type", 0, |_evaluator, args, recv| {
-            Ok(Value::Str(Rc::new(RefCell::new(recv.get_type()))))
-        });
+    pub fn bool_proto(value_proto: &Rc<Prototype>) -> Prototype {
+        let mut proto = Prototype::with_parent("Bool".to_string(), value_proto);
 
         // to_num() -> Num: returns 1 if true, 0 if false
-        proto_method!(proto, BoolToNum, "to_num", 0, |_evaluator, args, recv| {
-            if let Value::Bool(b) = recv {
-                if *b {
-                    return Ok(Value::Num(OrderedFloat(1.0)));
-                } else {
-                    return Ok(Value::Num(OrderedFloat(0.0)));
+        proto_method!(
+            proto,
+            BoolToNum,
+            "to_num",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Bool(b) = recv {
+                    if *b {
+                        return Ok(Value::Num(OrderedFloat(1.0)));
+                    } else {
+                        return Ok(Value::Num(OrderedFloat(0.0)));
+                    }
                 }
+                unreachable!()
             }
-            unreachable!()
-        });
+        );
 
         proto
     }
@@ -383,11 +523,16 @@ impl Callable for BoundMethod {
         self.method.arity()
     }
 
-    fn call(&self, evaluator: &mut Evaluator, mut args: Vec<Value>) -> EvalResult<Value> {
+    fn call(
+        &self,
+        evaluator: &mut Evaluator,
+        mut args: Vec<Value>,
+        cursor: Cursor,
+    ) -> EvalResult<Value> {
         // prepend the receiver so native methods can do: let this = &args[0];
         let mut real_args = Vec::with_capacity(args.len() + 1);
         real_args.push(self.receiver.clone());
         real_args.append(&mut args);
-        self.method.call(evaluator, real_args)
+        self.method.call(evaluator, real_args, cursor)
     }
 }

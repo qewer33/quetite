@@ -7,8 +7,8 @@ use crate::{
     evaluator::{
         Callable, EvalResult, Evaluator,
         natives::tui::{
-            canvas::{CanvasCommand, FnTuiCreateCanvas},
-            text_input::{FnTuiCreateTextInput, TextInputStyle},
+            canvas::{CanvasWidget, FnTuiCreateCanvas, render_canvas},
+            text_input::{FnTuiCreateTextInput, TextInputWidget, render_text_input},
         },
         object::{Method, NativeMethod, Object},
         value::Value,
@@ -21,9 +21,9 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
-    Terminal,
+    Frame, Terminal,
     backend::CrosstermBackend,
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Wrap},
 };
@@ -85,7 +85,7 @@ enum Widget {
         width: u16,
         height: u16,
         title: String,
-        color: Color,
+        style: TuiStyle,
     },
     Text {
         x: u16,
@@ -93,8 +93,7 @@ enum Widget {
         width: u16,
         height: u16,
         text: String,
-        fg: Color,
-        bg: Color,
+        style: TuiStyle,
     },
     List {
         x: u16,
@@ -103,7 +102,7 @@ enum Widget {
         height: u16,
         items: Vec<String>,
         selected: usize,
-        color: Color,
+        style: TuiStyle,
         title: String,
     },
     Progress {
@@ -112,27 +111,202 @@ enum Widget {
         width: u16,
         percent: u16,
         label: String,
-        color: Color,
+        style: TuiStyle,
     },
-    Canvas {
-        x: u16,
-        y: u16,
-        width: u16,
-        height: u16,
-        x_bounds: (f64, f64),
-        y_bounds: (f64, f64),
-        commands: Vec<CanvasCommand>,
-    },
-    TextInput {
-        x: u16,
-        y: u16,
-        width: u16,
-        content: String,
-        cursor: usize,
-        placeholder: String,
-        focused: bool,
-        style: TextInputStyle,
-    },
+    Canvas(CanvasWidget),
+    TextInput(TextInputWidget),
+}
+
+impl Widget {
+    fn render(&self, frame: &mut Frame<'_>) {
+        match self {
+            Widget::Block {
+                x,
+                y,
+                width,
+                height,
+                title,
+                style,
+            } => {
+                let area = Rect::new(*x, *y, *width, *height);
+                let block = Block::default()
+                    .title(title.clone())
+                    .borders(Borders::ALL)
+                    .style(style.text_style())
+                    .border_style(Style::default().fg(style.accent));
+                frame.render_widget(block, area);
+            }
+            Widget::Text {
+                x,
+                y,
+                width,
+                height,
+                text,
+                style,
+            } => {
+                let area = Rect::new(*x, *y, *width, *height);
+                let paragraph = Paragraph::new(text.clone())
+                    .style(style.text_style())
+                    .wrap(Wrap { trim: false });
+                frame.render_widget(paragraph, area);
+            }
+            Widget::List {
+                x,
+                y,
+                width,
+                height,
+                items,
+                selected,
+                style,
+                title,
+            } => {
+                let area = Rect::new(*x, *y, *width, *height);
+                let normal = style.text_style();
+                let highlight = Style::default()
+                    .fg(style.accent)
+                    .bg(style.bg)
+                    .add_modifier(Modifier::BOLD);
+
+                let list_items: Vec<ListItem> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| {
+                        let prefix = if i == *selected { "> " } else { "  " };
+                        let item_style = if i == *selected { highlight } else { normal };
+                        ListItem::new(format!("{}{}", prefix, item)).style(item_style)
+                    })
+                    .collect();
+
+                let list = List::new(list_items).block(
+                    Block::default()
+                        .title(title.clone())
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(style.accent)),
+                );
+
+                frame.render_widget(list, area);
+            }
+            Widget::Progress {
+                x,
+                y,
+                width,
+                percent,
+                label,
+                style,
+            } => {
+                let area = Rect::new(*x, *y, *width, 3);
+                let gauge = Gauge::default()
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(style.accent)),
+                    )
+                    .gauge_style(style.text_style().fg(style.accent))
+                    .percent(*percent)
+                    .label(label.clone());
+                frame.render_widget(gauge, area);
+            }
+            Widget::Canvas(widget) => render_canvas(frame, widget, widget_rect(frame, widget.x, widget.y, widget.width, widget.height)),
+            Widget::TextInput(widget) => render_text_input(frame, widget, widget_rect(frame, widget.x, widget.y, widget.width, 3)),
+        }
+    }
+}
+
+pub(super) fn widget_rect(frame: &Frame<'_>, x: u16, y: u16, width: u16, height: u16) -> Rect {
+    let parent = frame.area();
+    let y = y.min(parent.height);
+    let x = x.min(parent.width);
+    let height = height.min(parent.height.saturating_sub(y));
+    let width = width.min(parent.width.saturating_sub(x));
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(y),
+            Constraint::Length(height),
+            Constraint::Min(0),
+        ])
+        .split(parent);
+    let row_area = rows[1];
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(x),
+            Constraint::Length(width),
+            Constraint::Min(0),
+        ])
+        .split(row_area)[1]
+}
+
+#[derive(Clone)]
+pub struct TuiStyle {
+    pub fg: Color,
+    pub bg: Color,
+    pub accent: Color,
+}
+
+impl Default for TuiStyle {
+    fn default() -> Self {
+        Self {
+            fg: Color::White,
+            bg: Color::Reset,
+            accent: Color::Cyan,
+        }
+    }
+}
+
+impl TuiStyle {
+    fn color_from_value(val: Option<&Value>, default: Color) -> Color {
+        match val {
+            Some(Value::Str(s)) => parse_color(&s.borrow()),
+            Some(Value::Null) => Color::Reset,
+            _ => default,
+        }
+    }
+
+    fn with_fg(mut self, fg: Color) -> Self {
+        self.fg = fg;
+        self
+    }
+
+    fn with_bg(mut self, bg: Color) -> Self {
+        self.bg = bg;
+        self
+    }
+
+    fn with_accent(mut self, accent: Color) -> Self {
+        self.accent = accent;
+        self
+    }
+
+    fn from_args(
+        fg_arg: Option<&Value>,
+        bg_arg: Option<&Value>,
+        accent_arg: Option<&Value>,
+    ) -> Self {
+        Self::default()
+            .with_fg(Self::color_from_value(fg_arg, Color::White))
+            .with_bg(Self::color_from_value(bg_arg, Color::Reset))
+            .with_accent(Self::color_from_value(accent_arg, Color::Cyan))
+    }
+
+    fn text_style(&self) -> Style {
+        Style::default().fg(self.fg).bg(self.bg)
+    }
+
+    fn accent_style(&self) -> Style {
+        Style::default().fg(self.accent)
+    }
+
+    fn border_style(&self, focused: bool) -> Style {
+        let base = self.accent_style();
+        if focused {
+            base.add_modifier(Modifier::BOLD)
+        } else {
+            base
+        }
+    }
 }
 
 // Global terminal instance and widget buffer
@@ -142,7 +316,7 @@ thread_local! {
 }
 
 // Tui.init(): initializes the TUI (enters alternate screen, raw mode)
-native_fn!(FnTuiInit, "tui_init", 0, |_evaluator, _args| {
+native_fn!(FnTuiInit, "tui_init", 0, |_evaluator, _args, _cursor| {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -159,20 +333,25 @@ native_fn!(FnTuiInit, "tui_init", 0, |_evaluator, _args| {
 });
 
 // Tui.cleanup(): cleans up the TUI (exits alternate screen, restores terminal)
-native_fn!(FnTuiCleanup, "tui_cleanup", 0, |_evaluator, _args| {
-    TERMINAL.with(|t| {
-        if let Some(mut terminal) = t.borrow_mut().take() {
-            let _ = disable_raw_mode();
-            let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
-            let _ = terminal.show_cursor();
-        }
-    });
+native_fn!(
+    FnTuiCleanup,
+    "tui_cleanup",
+    0,
+    |_evaluator, _args, _cursor| {
+        TERMINAL.with(|t| {
+            if let Some(mut terminal) = t.borrow_mut().take() {
+                let _ = disable_raw_mode();
+                let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
+                let _ = terminal.show_cursor();
+            }
+        });
 
-    Ok(Value::Null)
-});
+        Ok(Value::Null)
+    }
+);
 
 // Tui.clear(): clears the widget buffer (call this at the start of each frame)
-native_fn!(FnTuiClear, "tui_clear", 0, |_evaluator, _args| {
+native_fn!(FnTuiClear, "tui_clear", 0, |_evaluator, _args, _cursor| {
     WIDGETS.with(|w| {
         w.borrow_mut().clear();
     });
@@ -181,412 +360,134 @@ native_fn!(FnTuiClear, "tui_clear", 0, |_evaluator, _args| {
 });
 
 // Tui.render(): renders all accumulated widgets to the screen
-native_fn!(FnTuiRender, "tui_render", 0, |_evaluator, _args| {
-    let result = TERMINAL.with(|t| -> io::Result<()> {
-        if let Some(terminal) = t.borrow_mut().as_mut() {
-            terminal.draw(|frame| {
-                WIDGETS.with(|w| {
-                    for widget in w.borrow().iter() {
-                        match widget {
-                            Widget::Block {
-                                x,
-                                y,
-                                width,
-                                height,
-                                title,
-                                color,
-                            } => {
-                                let area = Rect::new(*x, *y, *width, *height);
-                                let block = Block::default()
-                                    .title(title.clone())
-                                    .borders(Borders::ALL)
-                                    .border_style(Style::default().fg(*color));
-                                frame.render_widget(block, area);
-                            }
-                            Widget::Text {
-                                x,
-                                y,
-                                width,
-                                height,
-                                text,
-                                fg,
-                                bg,
-                            } => {
-                                let area = Rect::new(*x, *y, *width, *height);
-                                let paragraph = Paragraph::new(text.clone())
-                                    .style(Style::default().fg(*fg).bg(*bg))
-                                    .wrap(Wrap { trim: false });
-                                frame.render_widget(paragraph, area);
-                            }
-                            Widget::List {
-                                x,
-                                y,
-                                width,
-                                height,
-                                items,
-                                selected,
-                                color,
-                                title,
-                            } => {
-                                let area = Rect::new(*x, *y, *width, *height);
-
-                                let list_items: Vec<ListItem> = items
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, item)| {
-                                        let prefix = if i == *selected { "> " } else { "  " };
-                                        let style = if i == *selected {
-                                            Style::default().fg(*color).add_modifier(Modifier::BOLD)
-                                        } else {
-                                            Style::default()
-                                        };
-                                        ListItem::new(format!("{}{}", prefix, item)).style(style)
-                                    })
-                                    .collect();
-
-                                let list = List::new(list_items).block(
-                                    Block::default().title(title.clone()).borders(Borders::ALL),
-                                );
-
-                                frame.render_widget(list, area);
-                            }
-                            Widget::Progress {
-                                x,
-                                y,
-                                width,
-                                percent,
-                                label,
-                                color,
-                            } => {
-                                let area = Rect::new(*x, *y, *width, 3);
-                                let gauge = Gauge::default()
-                                    .block(Block::default().borders(Borders::ALL))
-                                    .gauge_style(Style::default().fg(*color))
-                                    .percent(*percent)
-                                    .label(label.clone());
-                                frame.render_widget(gauge, area);
-                            }
-                            Widget::Canvas {
-                                x,
-                                y,
-                                width,
-                                height,
-                                x_bounds,
-                                y_bounds,
-                                commands,
-                            } => {
-                                use ratatui::widgets::canvas::{
-                                    Canvas as RatatuiCanvas, Circle, Line, Points, Rectangle,
-                                };
-
-                                let area = Rect::new(*x, *y, *width, *height);
-
-                                let canvas = RatatuiCanvas::default()
-                                    .x_bounds([x_bounds.0, x_bounds.1])
-                                    .y_bounds([y_bounds.0, y_bounds.1])
-                                    .paint(|ctx| {
-                                        for cmd in commands {
-                                            match cmd {
-                                                CanvasCommand::Line {
-                                                    x1,
-                                                    y1,
-                                                    x2,
-                                                    y2,
-                                                    color,
-                                                } => {
-                                                    ctx.draw(&Line {
-                                                        x1: *x1,
-                                                        y1: *y1,
-                                                        x2: *x2,
-                                                        y2: *y2,
-                                                        color: *color,
-                                                    });
-                                                }
-                                                CanvasCommand::Circle {
-                                                    x,
-                                                    y,
-                                                    radius,
-                                                    color,
-                                                } => {
-                                                    ctx.draw(&Circle {
-                                                        x: *x,
-                                                        y: *y,
-                                                        radius: *radius,
-                                                        color: *color,
-                                                    });
-                                                }
-                                                CanvasCommand::Rectangle {
-                                                    x,
-                                                    y,
-                                                    width,
-                                                    height,
-                                                    color,
-                                                } => {
-                                                    ctx.draw(&Rectangle {
-                                                        x: *x,
-                                                        y: *y,
-                                                        width: *width,
-                                                        height: *height,
-                                                        color: *color,
-                                                    });
-                                                }
-                                                CanvasCommand::Points { points, color } => {
-                                                    ctx.draw(&Points {
-                                                        coords: points,
-                                                        color: *color,
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    });
-
-                                frame.render_widget(canvas, area);
-                            }
-                            Widget::TextInput {
-                                x,
-                                y,
-                                width,
-                                content,
-                                cursor,
-                                placeholder,
-                                focused,
-                                style,
-                            } => {
-                                let area = Rect::new(*x, *y, *width, 3);
-
-                                let display_text = if content.is_empty() {
-                                    if *focused {
-                                        String::new()
-                                    } else {
-                                        placeholder.clone()
-                                    }
-                                } else {
-                                    content.clone()
-                                };
-
-                                // Calculate visible window for scrolling
-                                let inner_width = (width.saturating_sub(2)) as usize; // Account for borders
-                                let chars: Vec<char> = display_text.chars().collect();
-
-                                // Determine scroll offset to keep cursor visible
-                                let scroll_offset = if *cursor > inner_width {
-                                    *cursor - inner_width
-                                } else {
-                                    0
-                                };
-
-                                // Get visible portion of text
-                                let visible_end = (scroll_offset + inner_width).min(chars.len());
-                                let visible_text: String =
-                                    chars[scroll_offset..visible_end].iter().collect();
-
-                                // Add cursor if focused
-                                let display_with_cursor = if *focused {
-                                    let cursor_pos = cursor.saturating_sub(scroll_offset);
-                                    let mut chars: Vec<char> = visible_text.chars().collect();
-                                    if cursor_pos <= chars.len() {
-                                        chars.insert(cursor_pos, '│'); // Using box drawing character
-                                    }
-                                    chars.iter().collect()
-                                } else {
-                                    visible_text
-                                };
-
-                                let border_style = if *focused {
-                                    Style::default()
-                                        .fg(style.border_color)
-                                        .add_modifier(Modifier::BOLD)
-                                } else {
-                                    Style::default().fg(style.border_color)
-                                };
-
-                                let paragraph = Paragraph::new(display_with_cursor)
-                                    .style(Style::default().fg(style.fg).bg(style.bg))
-                                    .block(
-                                        Block::default()
-                                            .borders(Borders::ALL)
-                                            .border_style(border_style),
-                                    );
-
-                                frame.render_widget(paragraph, area);
-                            }
+native_fn!(
+    FnTuiRender,
+    "tui_render",
+    0,
+    |_evaluator, _args, _cursor| {
+        let result = TERMINAL.with(|t| -> io::Result<()> {
+            if let Some(terminal) = t.borrow_mut().as_mut() {
+                terminal.draw(|frame| {
+                    WIDGETS.with(|w| {
+                        for widget in w.borrow().iter() {
+                            widget.render(frame);
                         }
-                    }
-                });
-            })?;
-        }
-        Ok(())
-    });
+                    });
+                })?;
+            }
+            Ok(())
+        });
 
-    result?;
-    Ok(Value::Null)
-});
+        result?;
+        Ok(Value::Null)
+    }
+);
 
 // Tui.draw_block(x, y, width, height, title, border_color)
-native_fn!(FnTuiDrawBlock, "tui_draw_block", 6, |_evaluator, args| {
-    let x = if let Value::Num(n) = args[0] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let y = if let Value::Num(n) = args[1] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let width = if let Value::Num(n) = args[2] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let height = if let Value::Num(n) = args[3] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
+native_fn!(
+    FnTuiDrawBlock,
+    "tui_draw_block",
+    6,
+    |_evaluator, args, cursor| {
+        let x = args[0].check_num(cursor, Some("x position".into()))? as u16;
+        let y = args[1].check_num(cursor, Some("y position".into()))? as u16;
+        let width = args[2].check_num(cursor, Some("width".into()))? as u16;
+        let height = args[3].check_num(cursor, Some("height".into()))? as u16;
 
-    let title = match &args[4] {
-        Value::Str(s) => s.borrow().clone(),
-        _ => String::new(),
-    };
+        let title = string_from_value(&args[4]);
+        let style = TuiStyle::from_args(None, None, args.get(5));
 
-    let color = match &args[5] {
-        Value::Str(s) => parse_color(&s.borrow()),
-        _ => Color::White,
-    };
-
-    WIDGETS.with(|w| {
-        w.borrow_mut().push(Widget::Block {
-            x,
-            y,
-            width,
-            height,
-            title,
-            color,
+        WIDGETS.with(|w| {
+            w.borrow_mut().push(Widget::Block {
+                x,
+                y,
+                width,
+                height,
+                title,
+                style,
+            });
         });
-    });
 
-    Ok(Value::Null)
-});
+        Ok(Value::Null)
+    }
+);
 
 // Tui.draw_text(x, y, width, height, text, fg_color, bg_color)
-native_fn!(FnTuiDrawText, "tui_draw_text", 7, |_evaluator, args| {
-    let x = if let Value::Num(n) = args[0] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let y = if let Value::Num(n) = args[1] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let width = if let Value::Num(n) = args[2] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let height = if let Value::Num(n) = args[3] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
+native_fn!(
+    FnTuiDrawText,
+    "tui_draw_text",
+    7,
+    |_evaluator, args, cursor| {
+        let x = args[0].check_num(cursor, Some("x position".into()))? as u16;
+        let y = args[1].check_num(cursor, Some("y position".into()))? as u16;
+        let width = args[2].check_num(cursor, Some("width".into()))? as u16;
+        let height = args[3].check_num(cursor, Some("height".into()))? as u16;
 
-    let text = match &args[4] {
-        Value::Str(s) => s.borrow().clone(),
-        _ => String::new(),
-    };
+        let text = string_from_value(&args[4]);
+        let style = TuiStyle::from_args(args.get(5), args.get(6), None);
 
-    let fg = match &args[5] {
-        Value::Str(s) => parse_color(&s.borrow()),
-        _ => Color::White,
-    };
-
-    let bg = match &args[6] {
-        Value::Str(s) => parse_color(&s.borrow()),
-        Value::Null => Color::Reset,
-        _ => Color::Reset,
-    };
-
-    WIDGETS.with(|w| {
-        w.borrow_mut().push(Widget::Text {
-            x,
-            y,
-            width,
-            height,
-            text,
-            fg,
-            bg,
+        WIDGETS.with(|w| {
+            w.borrow_mut().push(Widget::Text {
+                x,
+                y,
+                width,
+                height,
+                text,
+                style,
+            });
         });
-    });
 
-    Ok(Value::Null)
-});
+        Ok(Value::Null)
+    }
+);
 
 // Tui.draw_list(x, y, width, height, items, selected, color, title)
 // items: List of strings, selected: index of selected item
-native_fn!(FnTuiDrawList, "tui_draw_list", 8, |_evaluator, args| {
-    let x = if let Value::Num(n) = args[0] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let y = if let Value::Num(n) = args[1] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let width = if let Value::Num(n) = args[2] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
-    let height = if let Value::Num(n) = args[3] {
-        n.0 as u16
-    } else {
-        return Ok(Value::Null);
-    };
+native_fn!(
+    FnTuiDrawList,
+    "tui_draw_list",
+    8,
+    |_evaluator, args, cursor| {
+        let x = args[0].check_num(cursor, Some("x".into()))? as u16;
+        let y = args[1].check_num(cursor, Some("y".into()))? as u16;
+        let width = args[2].check_num(cursor, Some("width".into()))? as u16;
+        let height = args[3].check_num(cursor, Some("height".into()))? as u16;
 
-    let items = match &args[4] {
-        Value::List(list) => list
-            .borrow()
-            .iter()
-            .map(|v| v.to_string())
-            .collect::<Vec<String>>(),
-        _ => vec![],
-    };
+        let items = match &args[4] {
+            Value::List(list) => list
+                .borrow()
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<String>>(),
+            _ => vec![],
+        };
 
-    let selected = if let Value::Num(n) = args[5] {
-        n.0 as usize
-    } else {
-        0
-    };
+        let selected_val = args[5].check_num(cursor, Some("selected index".into()))?;
+        let selected = if selected_val < 0.0 {
+            0
+        } else {
+            selected_val as usize
+        };
 
-    let color = match &args[6] {
-        Value::Str(s) => parse_color(&s.borrow()),
-        _ => Color::Cyan,
-    };
+        let style = TuiStyle::from_args(None, None, args.get(6));
+        let title = string_from_value(&args[7]);
 
-    let title = match &args[7] {
-        Value::Str(s) => s.borrow().clone(),
-        _ => String::new(),
-    };
-
-    WIDGETS.with(|w| {
-        w.borrow_mut().push(Widget::List {
-            x,
-            y,
-            width,
-            height,
-            items,
-            selected,
-            color,
-            title,
+        WIDGETS.with(|w| {
+            w.borrow_mut().push(Widget::List {
+                x,
+                y,
+                width,
+                height,
+                items,
+                selected,
+                style,
+                title,
+            });
         });
-    });
 
-    Ok(Value::Null)
-});
+        Ok(Value::Null)
+    }
+);
 
 // Tui.draw_progress(x, y, width, percent, label, color)
 // percent: 0-100
@@ -594,38 +495,16 @@ native_fn!(
     FnTuiDrawProgress,
     "tui_draw_progress",
     6,
-    |_evaluator, args| {
-        let x = if let Value::Num(n) = args[0] {
-            n.0 as u16
-        } else {
-            return Ok(Value::Null);
-        };
-        let y = if let Value::Num(n) = args[1] {
-            n.0 as u16
-        } else {
-            return Ok(Value::Null);
-        };
-        let width = if let Value::Num(n) = args[2] {
-            n.0 as u16
-        } else {
-            return Ok(Value::Null);
-        };
+    |_evaluator, args, cursor| {
+        let x = args[0].check_num(cursor, Some("x".into()))? as u16;
+        let y = args[1].check_num(cursor, Some("y".into()))? as u16;
+        let width = args[2].check_num(cursor, Some("width".into()))? as u16;
+        let percent = args[3]
+            .check_num(cursor, Some("percent".into()))?
+            .clamp(0.0, 100.0) as u16;
 
-        let percent = if let Value::Num(n) = args[3] {
-            (n.0.clamp(0.0, 100.0)) as u16
-        } else {
-            0
-        };
-
-        let label = match &args[4] {
-            Value::Str(s) => s.borrow().clone(),
-            _ => String::new(),
-        };
-
-        let color = match &args[5] {
-            Value::Str(s) => parse_color(&s.borrow()),
-            _ => Color::Green,
-        };
+        let label = string_from_value(&args[4]);
+        let style = TuiStyle::from_args(None, None, args.get(5));
 
         WIDGETS.with(|w| {
             w.borrow_mut().push(Widget::Progress {
@@ -634,7 +513,7 @@ native_fn!(
                 width,
                 percent,
                 label,
-                color,
+                style,
             });
         });
 
@@ -643,7 +522,7 @@ native_fn!(
 );
 
 // Helper function to parse color strings
-fn parse_color(s: &str) -> Color {
+pub fn parse_color(s: &str) -> Color {
     match s.to_lowercase().as_str() {
         "black" => Color::Black,
         "red" => Color::Red,
@@ -662,5 +541,12 @@ fn parse_color(s: &str) -> Color {
         "lightmagenta" => Color::LightMagenta,
         "lightcyan" => Color::LightCyan,
         _ => Color::White,
+    }
+}
+
+fn string_from_value(value: &Value) -> String {
+    match value {
+        Value::Str(s) => s.borrow().clone(),
+        _ => String::new(),
     }
 }

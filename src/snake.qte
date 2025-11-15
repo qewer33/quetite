@@ -130,7 +130,7 @@ obj Game do
             end
 
             # game logic
-            if Sys.clock() - tprev > 250/self.game_speed do
+            if Sys.clock()-tprev > 250/self.game_speed do
                 tprev = Sys.clock()
 
                 # check game end (snake collision)

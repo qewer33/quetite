@@ -602,7 +602,7 @@ impl<'a> Evaluator<'a> {
                         expr.cursor,
                     ));
                 }
-                return Ok(c.call(self, args_values)?);
+                return Ok(c.call(self, args_values, expr.cursor)?);
             }
 
             if let Value::Obj(obj) = callee {
@@ -616,7 +616,7 @@ impl<'a> Evaluator<'a> {
                         expr.cursor,
                     ));
                 }
-                return Ok(obj.call(self, args_values)?);
+                return Ok(obj.call(self, args_values, expr.cursor)?);
             }
 
             return Err(RuntimeEvent::error(
@@ -722,7 +722,7 @@ impl<'a> Evaluator<'a> {
         if let ExprKind::Unary { op, right } = &expr.kind {
             let right = self.eval_expr(right)?;
             return match op {
-                UnaryOp::Negate => Ok(Value::Num(OrderedFloat(-right.check_num(expr.cursor)?))),
+                UnaryOp::Negate => Ok(Value::Num(OrderedFloat(-right.check_num(expr.cursor, None)?))),
                 UnaryOp::Not => Ok(Value::Bool(!right.is_truthy())),
             };
         }
@@ -750,33 +750,33 @@ impl<'a> Evaluator<'a> {
                     }
                 }
                 BinaryOp::Sub => Ok(Value::Num(OrderedFloat(
-                    left.check_num(cursor)? - right.check_num(cursor)?,
+                    left.check_num(cursor, None)? - right.check_num(cursor, None)?,
                 ))),
                 BinaryOp::Mult => Ok(Value::Num(OrderedFloat(
-                    left.check_num(cursor)? * right.check_num(cursor)?,
+                    left.check_num(cursor, None)? * right.check_num(cursor, None)?,
                 ))),
                 BinaryOp::Div => Ok(Value::Num(OrderedFloat(
-                    left.check_num(cursor)? / right.check_num(cursor)?,
+                    left.check_num(cursor, None)? / right.check_num(cursor, None)?,
                 ))),
                 BinaryOp::Mod => Ok(Value::Num(OrderedFloat(
-                    left.check_num(cursor)? % right.check_num(cursor)?,
+                    left.check_num(cursor, None)? % right.check_num(cursor, None)?,
                 ))),
                 BinaryOp::Pow => Ok(Value::Num(OrderedFloat(
-                    left.check_num(cursor)?.powf(right.check_num(cursor)?),
+                    left.check_num(cursor, None)?.powf(right.check_num(cursor, None)?),
                 ))),
                 BinaryOp::Equals => Ok(Value::Bool(left.is_equal(&right))),
                 BinaryOp::NotEquals => Ok(Value::Bool(!left.is_equal(&right))),
                 BinaryOp::Greater => Ok(Value::Bool(
-                    left.check_num(cursor)? > right.check_num(cursor)?,
+                    left.check_num(cursor, None)? > right.check_num(cursor, None)?,
                 )),
                 BinaryOp::GreaterEquals => Ok(Value::Bool(
-                    left.check_num(cursor)? >= right.check_num(cursor)?,
+                    left.check_num(cursor, None)? >= right.check_num(cursor, None)?,
                 )),
                 BinaryOp::Lesser => Ok(Value::Bool(
-                    left.check_num(cursor)? < right.check_num(cursor)?,
+                    left.check_num(cursor, None)? < right.check_num(cursor, None)?,
                 )),
                 BinaryOp::LesserEquals => Ok(Value::Bool(
-                    left.check_num(cursor)? <= right.check_num(cursor)?,
+                    left.check_num(cursor, None)? <= right.check_num(cursor, None)?,
                 )),
                 BinaryOp::Nullish => {
                     if let Value::Null = left {

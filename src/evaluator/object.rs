@@ -47,11 +47,12 @@ impl Callable for NativeMethod {
         &self,
         evaluator: &mut crate::evaluator::Evaluator,
         mut args: Vec<Value>,
+        cursor: Cursor
     ) -> EvalResult<Value> {
         if let Some(bind) = &self.bind {
             args.insert(0, bind.clone());
         }
-        self.callable.call(evaluator, args)
+        self.callable.call(evaluator, args, cursor)
     }
 }
 
@@ -132,13 +133,14 @@ impl Callable for Object {
         &self,
         evaluator: &mut super::Evaluator,
         args: Vec<super::value::Value>,
+        cursor: Cursor
     ) -> EvalResult<Value> {
         let inst = Value::ObjInstance(Rc::new(RefCell::new(Instance::new(self.clone()))));
 
         if let Some(init) = self.find_method("init".to_string()) {
             init.bind(inst.clone())
                 .get_callable()
-                .call(evaluator, args)?;
+                .call(evaluator, args, cursor)?;
         }
 
         Ok(inst)

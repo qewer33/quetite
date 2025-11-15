@@ -1,20 +1,6 @@
-sq(n) = n*n
-
-main() do
-    var a = sq(10)
-    var b = true
-
-    # this is a comment
-
-    if a == 100 do
-        print "poggers"
-    end
-
-    for var a = 0 while a < 10 step a = a + 1 do
-        print a
-    end
-
-    print a
+fn fib(n) do
+    if n < 1 return n
+    return fib(n-1) + fib(n-2)
 end
 
-main()
+println(fib(10))

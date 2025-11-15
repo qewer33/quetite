@@ -11,7 +11,7 @@ use crate::{
         Evaluator,
         object::{Instance, Object},
         prototype::{Prototype, ValuePrototypes},
-        runtime_err::{EvalResult, RuntimeEvent},
+        runtime_err::{EvalResult, RuntimeErr, RuntimeEvent},
     },
     lexer::cursor::Cursor,
 };
@@ -73,6 +73,92 @@ impl Value {
         }
     }
 
+    pub fn check_type(&self, expected: String, cursor: Cursor) -> EvalResult<bool> {
+        if expected.to_uppercase() == self.get_type().to_uppercase() {
+            return Ok(true);
+        }
+        Err(RuntimeEvent::Err(RuntimeErr::new(
+            format!(
+                "expected value of type {}, found {}",
+                expected,
+                self.get_type()
+            ),
+            cursor,
+        )))
+    }
+
+    pub fn check_num(
+        &self,
+        cursor: Cursor,
+        name: Option<String>,
+    ) -> EvalResult<f64> {
+        if let Value::Num(f) = self {
+            return Ok(f.0);
+        }
+        let val = match name {
+            Some(val) => val,
+            None => "value".to_string(),
+        };
+        Err(RuntimeEvent::Err(RuntimeErr::new(
+            format!("expected {} of type Num, found {}", val, self.get_type()),
+            cursor,
+        )))
+    }
+
+    pub fn check_str(
+        &self,
+        cursor: Cursor,
+        name: Option<String>,
+    ) -> EvalResult<Rc<RefCell<String>>> {
+        if let Value::Str(str) = self {
+            return Ok(Rc::clone(&str));
+        }
+        let val = match name {
+            Some(val) => val,
+            None => "value".to_string(),
+        };
+        Err(RuntimeEvent::Err(RuntimeErr::new(
+            format!("expected {} of type Str, found {}", val, self.get_type()),
+            cursor,
+        )))
+    }
+
+    pub fn check_bool(
+        &self,
+        cursor: Cursor,
+        name: Option<String>,
+    ) -> EvalResult<bool> {
+        if let Value::Bool(val) = self {
+            return Ok(*val);
+        }
+        let val = match name {
+            Some(val) => val,
+            None => "value".to_string(),
+        };
+        Err(RuntimeEvent::Err(RuntimeErr::new(
+            format!("expected {} of type Bool, found {}", val, self.get_type()),
+            cursor,
+        )))
+    }
+
+    pub fn check_list(
+        &self,
+        cursor: Cursor,
+        name: Option<String>,
+    ) -> EvalResult<Rc<RefCell<Vec<Value>>>> {
+        if let Value::List(list) = self {
+            return Ok(Rc::clone(&list));
+        }
+        let val = match name {
+            Some(val) => val,
+            None => "value".to_string(),
+        };
+        Err(RuntimeEvent::Err(RuntimeErr::new(
+            format!("expected {} of type List, found {}", val, self.get_type()),
+            cursor,
+        )))
+    }
+
     pub fn is_equal(&self, other: &Value) -> bool {
         match self {
             Value::Null => {
@@ -130,16 +216,6 @@ impl Value {
             Value::Num(n) => *n == 0.,
             _ => true,
         }
-    }
-
-    pub fn check_num(&self, cursor: Cursor) -> Result<f64, RuntimeEvent> {
-        if let Value::Num(num) = self {
-            return Ok(num.0);
-        }
-        Err(RuntimeEvent::error(
-            format!("expected Num, found {:?}", self),
-            cursor,
-        ))
     }
 
     pub fn add_assign(&self, rhs: Value, cursor: Cursor) -> EvalResult<Value> {
@@ -205,5 +281,10 @@ impl Value {
 pub trait Callable: Debug {
     fn name(&self) -> &str;
     fn arity(&self) -> usize;
-    fn call(&self, evaluator: &mut Evaluator, args: Vec<Value>) -> EvalResult<Value>;
+    fn call(
+        &self,
+        evaluator: &mut Evaluator,
+        args: Vec<Value>,
+        cursor: Cursor,
+    ) -> EvalResult<Value>;
 }

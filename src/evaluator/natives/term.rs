@@ -17,7 +17,7 @@ use crate::{
 
 use crossterm::{
     cursor::MoveTo,
-    event::{self, Event},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{Clear, ClearType, SetTitle, disable_raw_mode, enable_raw_mode},
 };
@@ -83,29 +83,36 @@ pub fn native_term() -> Value {
 }
 
 // Term.size() -> [width, height]: returns terminal dimensions
-native_fn!(FnTermSize, "terminal_size", 0, |_evaluator, _args| {
-    let (cols, rows) = crossterm::terminal::size()?;
+native_fn!(
+    FnTermSize,
+    "terminal_size",
+    0,
+    |_evaluator, _args, _cursor| {
+        let (cols, rows) = crossterm::terminal::size()?;
 
-    Ok(Value::List(Rc::new(RefCell::new(vec![
-        Value::Num(OrderedFloat(cols as f64)),
-        Value::Num(OrderedFloat(rows as f64)),
-    ]))))
-});
-
-use crossterm::event::KeyModifiers;
+        Ok(Value::List(Rc::new(RefCell::new(vec![
+            Value::Num(OrderedFloat(cols as f64)),
+            Value::Num(OrderedFloat(rows as f64)),
+        ]))))
+    }
+);
 
 native_fn!(
     FnTermGetInput,
     "terminal_get_input",
     0,
-    |_evaluator, _args| {
+    |_evaluator, _args, _cursor| {
         if event::poll(Duration::from_millis(0))? {
             if let Event::Key(key_event) = event::read()? {
-                let key_str = key_event.code.to_string();
+                let key_str = match key_event.code {
+                    KeyCode::BackTab => "Tab".into(),
+                    _ => key_event.code.to_string(),
+                };
 
                 // Extract modifiers
                 let ctrl = key_event.modifiers.contains(KeyModifiers::CONTROL);
-                let shift = key_event.modifiers.contains(KeyModifiers::SHIFT);
+                let shift = key_event.modifiers.contains(KeyModifiers::SHIFT)
+                    || matches!(key_event.code, KeyCode::BackTab);
                 let alt = key_event.modifiers.contains(KeyModifiers::ALT);
 
                 // Create key data
@@ -174,7 +181,7 @@ native_fn_with_data!(
     "key",
     0,
     KeyInputData,
-    |_evaluator, _args, data| {
+    |_evaluator, _args, _cursor, data| {
         let d = data.borrow();
         Ok(Value::Str(Rc::new(RefCell::new(d.key.clone()))))
     }
@@ -185,7 +192,7 @@ native_fn_with_val!(
     "ctrl",
     0,
     bool,
-    |_evaluator, _args, val| { Ok(Value::Bool(*val)) }
+    |_evaluator, _args, _cursor, val| { Ok(Value::Bool(*val)) }
 );
 
 native_fn_with_val!(
@@ -193,7 +200,7 @@ native_fn_with_val!(
     "shift",
     0,
     bool,
-    |_evaluator, _args, val| { Ok(Value::Bool(*val)) }
+    |_evaluator, _args, _cursor, val| { Ok(Value::Bool(*val)) }
 );
 
 native_fn_with_val!(
@@ -201,7 +208,7 @@ native_fn_with_val!(
     "alt",
     0,
     bool,
-    |_evaluator, _args, val| { Ok(Value::Bool(*val)) }
+    |_evaluator, _args, _cursor, val| { Ok(Value::Bool(*val)) }
 );
 
 // Term.cursor_hide(): hides the cursor
@@ -209,7 +216,7 @@ native_fn!(
     FnTermCursorHide,
     "terminal_cursor_hide",
     0,
-    |_evaluator, _args| {
+    |_evaluator, _args, _cursor| {
         execute!(io::stdout(), crossterm::cursor::Hide)?;
         Ok(Value::Null)
     }
@@ -220,7 +227,7 @@ native_fn!(
     FnTermCursorShow,
     "terminal_cursor_show",
     0,
-    |_evaluator, _args| {
+    |_evaluator, _args, _cursor| {
         execute!(io::stdout(), crossterm::cursor::Show)?;
         Ok(Value::Null)
     }
@@ -231,7 +238,7 @@ native_fn!(
     FnTermCursorMove,
     "terminal_cursor_move",
     2,
-    |_evaluator, args| {
+    |_evaluator, args, _cursor| {
         let x = if let Value::Num(n) = args[0] {
             n.0 as u16
         } else {
@@ -255,7 +262,7 @@ native_fn!(
     FnTermRawEnable,
     "terminal_raw_enable",
     0,
-    |_evaluator, _args| {
+    |_evaluator, _args, _cursor| {
         enable_raw_mode()?;
         Ok(Value::Null)
     }
@@ -266,28 +273,33 @@ native_fn!(
     FnTermRawDisable,
     "terminal_raw_disable",
     0,
-    |_evaluator, _args| {
+    |_evaluator, _args, _cursor| {
         disable_raw_mode()?;
         Ok(Value::Null)
     }
 );
 
 // Term.clear(): clears entire screen and moves cursor to 0,0
-native_fn!(FnTermClear, "terminal_clear", 0, |_evaluator, _args| {
-    execute!(
-        io::stdout(),
-        Clear(ClearType::All),
-        crossterm::cursor::MoveTo(0, 0)
-    )?;
-    Ok(Value::Null)
-});
+native_fn!(
+    FnTermClear,
+    "terminal_clear",
+    0,
+    |_evaluator, _args, _cursor| {
+        execute!(
+            io::stdout(),
+            Clear(ClearType::All),
+            crossterm::cursor::MoveTo(0, 0)
+        )?;
+        Ok(Value::Null)
+    }
+);
 
 // Term.clear_line(): clears current line
 native_fn!(
     FnTermClearLine,
     "terminal_clear_line",
     0,
-    |_evaluator, _args| {
+    |_evaluator, _args, _cursor| {
         execute!(io::stdout(), Clear(ClearType::CurrentLine))?;
         io::stdout().flush()?;
         Ok(Value::Null)
@@ -295,7 +307,7 @@ native_fn!(
 );
 
 // Term.put(x, y, str): puts string at position without moving cursor after
-native_fn!(FnTermPut, "terminal_put", 3, |_evaluator, args| {
+native_fn!(FnTermPut, "terminal_put", 3, |_evaluator, args, _cursor| {
     let x = if let Value::Num(n) = args[0] {
         n.0 as u16
     } else {
@@ -321,24 +333,29 @@ native_fn!(FnTermPut, "terminal_put", 3, |_evaluator, args| {
 });
 
 // Term.write(str): writes string at current cursor position and advances cursor
-native_fn!(FnTermWrite, "terminal_write", 1, |_evaluator, args| {
-    let s = match &args[0] {
-        Value::Str(s) => s.borrow().clone(),
-        other => other.to_string(),
-    };
+native_fn!(
+    FnTermWrite,
+    "terminal_write",
+    1,
+    |_evaluator, args, _cursor| {
+        let s = match &args[0] {
+            Value::Str(s) => s.borrow().clone(),
+            other => other.to_string(),
+        };
 
-    print!("{s}");
-    io::stdout().flush()?;
+        print!("{s}");
+        io::stdout().flush()?;
 
-    Ok(Value::Null)
-});
+        Ok(Value::Null)
+    }
+);
 
 // Term.set_title(str): sets terminal window title
 native_fn!(
     FnTermSetTitle,
     "terminal_set_title",
     1,
-    |_evaluator, args| {
+    |_evaluator, args, _cursor| {
         if let Value::Str(s) = &args[0] {
             execute!(io::stdout(), SetTitle(s.borrow().as_str()))?;
         }
@@ -347,7 +364,12 @@ native_fn!(
 );
 
 // Term.flush(): manually flush stdout buffer
-native_fn!(FnTermFlush, "terminal_flush", 0, |_evaluator, _args| {
-    io::stdout().flush()?;
-    Ok(Value::Null)
-});
+native_fn!(
+    FnTermFlush,
+    "terminal_flush",
+    0,
+    |_evaluator, _args, _cursor| {
+        io::stdout().flush()?;
+        Ok(Value::Null)
+    }
+);

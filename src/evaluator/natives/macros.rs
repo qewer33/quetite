@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! native_fn {
-    ($name:ident, $str_name:expr, $arity:expr, |$evaluator:ident, $args:ident| $body:block) => {
+    ($name:ident, $str_name:expr, $arity:expr, |$evaluator:ident, $args:ident, $cursor:ident| $body:block) => {
         #[derive(Debug)]
         pub struct $name;
         impl Callable for $name {
@@ -10,7 +10,12 @@ macro_rules! native_fn {
             fn arity(&self) -> usize {
                 $arity
             }
-            fn call(&self, $evaluator: &mut Evaluator, $args: Vec<Value>) -> EvalResult<Value> {
+            fn call(
+                &self,
+                $evaluator: &mut Evaluator,
+                $args: Vec<Value>,
+                $cursor: crate::lexer::cursor::Cursor,
+            ) -> EvalResult<Value> {
                 $body
             }
         }
@@ -19,7 +24,7 @@ macro_rules! native_fn {
 
 #[macro_export]
 macro_rules! native_fn_with_data {
-    ($struct_name:ident, $method_name:expr, $arity:expr, $data_type:ty, |$evaluator:ident, $args:ident, $data:ident| $body:block) => {
+    ($struct_name:ident, $method_name:expr, $arity:expr, $data_type:ty, |$evaluator:ident, $args:ident, $cursor:ident, $data:ident| $body:block) => {
         struct $struct_name {
             data: Rc<RefCell<$data_type>>,
         }
@@ -32,7 +37,12 @@ macro_rules! native_fn_with_data {
                 $arity
             }
 
-            fn call(&self, $evaluator: &mut Evaluator, $args: Vec<Value>) -> EvalResult<Value> {
+            fn call(
+                &self,
+                $evaluator: &mut Evaluator,
+                $args: Vec<Value>,
+                $cursor: crate::lexer::cursor::Cursor,
+            ) -> EvalResult<Value> {
                 let $data = &self.data;
                 $body
             }
@@ -48,7 +58,7 @@ macro_rules! native_fn_with_data {
 
 #[macro_export]
 macro_rules! native_fn_with_val {
-    ($struct_name:ident, $method_name:expr, $arity:expr, $val_type:ty, |$evaluator:ident, $args:ident, $val:ident| $body:block) => {
+    ($struct_name:ident, $method_name:expr, $arity:expr, $val_type:ty, |$evaluator:ident, $args:ident, $cursor:ident, $val:ident| $body:block) => {
         struct $struct_name {
             val: $val_type,
         }
@@ -61,7 +71,12 @@ macro_rules! native_fn_with_val {
                 $arity
             }
 
-            fn call(&self, $evaluator: &mut Evaluator, $args: Vec<Value>) -> EvalResult<Value> {
+            fn call(
+                &self,
+                $evaluator: &mut Evaluator,
+                $args: Vec<Value>,
+                $cursor: crate::lexer::cursor::Cursor,
+            ) -> EvalResult<Value> {
                 let $val = &self.val;
                 $body
             }

@@ -8,7 +8,7 @@ obj Item do
 
     render(self) do
         if self.focused do
-            self.input.set_style("white", "black", "white")
+            self.input.set_style("black", Null, "blue")
         else do
             self.input.set_style("black", Null, "black")
         end

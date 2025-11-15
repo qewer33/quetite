@@ -1,6 +1,7 @@
 mod macros;
 mod math;
 mod rand;
+mod p5;
 mod sys;
 mod term;
 mod tui;
@@ -50,25 +51,26 @@ impl Natives {
             .borrow_mut()
             .define("Term".into(), term::native_term());
         natives.borrow_mut().define("Tui".into(), tui::native_tui());
+        natives.borrow_mut().define("P5".into(), p5::native_p5());
 
         natives
     }
 }
 
 // print(expr)
-native_fn!(FnPrint, "print", 1, |_evaluator, args| {
+native_fn!(FnPrint, "print", 1, |_evaluator, args, _cursor| {
     print!("{}", args[0]);
     Ok(Value::Null)
 });
 
 // println(expr)
-native_fn!(FnPrintln, "println", 1, |_evaluator, args| {
+native_fn!(FnPrintln, "println", 1, |_evaluator, args, _cursor| {
     println!("{}", args[0]);
     Ok(Value::Null)
 });
 
 // read() -> Str
-native_fn!(FnRead, "read", 0, |_evaluator, _args| {
+native_fn!(FnRead, "read", 0, |_evaluator, _args, _cursor| {
     let mut string = String::new();
     io::stdin()
         .read_line(&mut string)
