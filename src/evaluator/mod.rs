@@ -255,9 +255,10 @@ impl<'a> Evaluator<'a> {
             err_kind,
             err_val,
             catch,
+            ensure,
         } = &stmt.kind
         {
-            match self.eval_stmt(body) {
+            let out = match self.eval_stmt(body) {
                 Err(e) => match e {
                     RuntimeEvent::UserErr { val, .. } => {
                         let catch_env = Env::enclosed(self.env.clone());
@@ -271,7 +272,7 @@ impl<'a> Evaluator<'a> {
                             catch_env.borrow_mut().define(eval.clone(), val);
                         }
 
-                        self.eval_stmt_block(catch, catch_env)?;
+                        self.eval_stmt_block(catch, catch_env)
                     }
                     RuntimeEvent::Err(err) => {
                         let catch_env = Env::enclosed(self.env.clone());
@@ -287,13 +288,20 @@ impl<'a> Evaluator<'a> {
                                 .define(eval.clone(), Value::Str(Rc::new(RefCell::new(err.msg))));
                         }
 
-                        self.eval_stmt_block(catch, catch_env)?;
+                        self.eval_stmt_block(catch, catch_env)
                     }
-                    _ => return Err(e),
+                    other => Err(other),
                 },
-                _ => {}
+                Ok(()) => Ok(()),
+            };
+
+            if let Some(ensure_body) = ensure {
+                if let Err(e) = self.eval_stmt(ensure_body) {
+                    return Err(e);
+                }
             }
-            return Ok(());
+
+            return out;
         }
         unreachable!("Non-try statement passed to Evaluator::eval_stmt_try");
     }

@@ -383,12 +383,18 @@ impl<'a> Parser<'a> {
 
         let catch = Box::new(self.stmt()?);
 
+        let mut ensure: Option<Box<Stmt>> = None;
+        if self.match_keyword(KeywordKind::Ensure) {
+            ensure = Some(Box::new(self.stmt()?));
+        }
+
         Ok(Stmt::new(
             StmtKind::Try {
                 body,
                 err_kind,
                 err_val,
                 catch,
+                ensure,
             },
             self.previous().cursor,
         ))
@@ -436,13 +442,17 @@ impl<'a> Parser<'a> {
         while !self.check_keyword(KeywordKind::End)
             && !self.check_keyword(KeywordKind::Else)
             && !self.check_keyword(KeywordKind::Catch)
+            && !self.check_keyword(KeywordKind::Ensure)
             && !self.is_at_end()
         {
             statements.push(self.declr()?);
             self.skip_eols();
         }
 
-        if !self.check_keyword(KeywordKind::Else) && !self.check_keyword(KeywordKind::Catch) {
+        if !self.check_keyword(KeywordKind::Else)
+            && !self.check_keyword(KeywordKind::Catch)
+            && !self.check_keyword(KeywordKind::Ensure)
+        {
             self.consume_keyword(KeywordKind::End, "Expected closing \"end\" after block")?;
         }
         Ok(Stmt::new(
@@ -533,7 +543,7 @@ impl<'a> Parser<'a> {
             expr.kind = ExprKind::Ternary {
                 condition: Box::new(expr.clone()),
                 true_branch,
-                false_branch
+                false_branch,
             };
             expr.cursor = self.previous().cursor;
         }

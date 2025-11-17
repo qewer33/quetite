@@ -133,6 +133,7 @@ pub enum KeywordKind {
     Throw,
     Try,
     Catch,
+    Ensure,
 }
 
 impl ToString for KeywordKind {
@@ -159,6 +160,7 @@ impl ToString for KeywordKind {
             KeywordKind::Throw => "throw",
             KeywordKind::Try => "try",
             KeywordKind::Catch => "catch",
+            KeywordKind::Ensure => "ensure",
         }
         .into()
     }
@@ -190,7 +192,7 @@ impl FromStr for KeywordKind {
             "throw" => Ok(KeywordKind::Throw),
             "try" => Ok(KeywordKind::Try),
             "catch" => Ok(KeywordKind::Catch),
-
+            "ensure" => Ok(KeywordKind::Ensure),
             _ => Err(()),
         }
     }

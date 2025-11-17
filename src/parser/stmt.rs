@@ -33,7 +33,8 @@ pub enum StmtKind {
         body: Box<Stmt>,
         err_kind: Option<String>,
         err_val: Option<String>,
-        catch: Box<Stmt>
+        catch: Box<Stmt>,
+        ensure: Option<Box<Stmt>>
     },
     Fn {
         name: String,

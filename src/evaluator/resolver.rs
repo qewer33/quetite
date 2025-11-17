@@ -277,6 +277,7 @@ impl<'a> Resolver<'a> {
             err_kind,
             err_val,
             catch,
+            ensure,
         } = &stmt.kind
         {
             self.resolve_stmt(body)?;
@@ -295,6 +296,10 @@ impl<'a> Resolver<'a> {
             self.resolve_stmt_block(catch, true)?;
 
             self.end_scope();
+
+            if let Some(ensure_body) = ensure {
+                self.resolve_stmt(ensure_body)?;
+            }
 
             return Ok(());
         }
