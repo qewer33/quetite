@@ -1,6 +1,5 @@
-fn fib(n) do
-    if n < 1 return n
-    return fib(n-1) + fib(n-2)
-end
+var a = 10
 
-println(fib(10))
+fn amogus() do
+    println("sus")
+end

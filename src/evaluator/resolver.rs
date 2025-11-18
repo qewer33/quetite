@@ -130,7 +130,8 @@ impl<'a> Resolver<'a> {
     fn resolve_stmt(&mut self, stmt: &Stmt) -> ResolveResult {
         match &stmt.kind {
             StmtKind::Expr(_) => self.resolve_stmt_expr(stmt),
-            StmtKind::Err(_) => self.resolve_stmt_err(stmt),
+            StmtKind::Throw(_) => self.resolve_stmt_err(stmt),
+            StmtKind::Use(_) => self.resolve_stmt_use(stmt),
             StmtKind::Return(_) => self.resolve_stmt_return(stmt),
             StmtKind::Break => Ok(()),
             StmtKind::Continue => Ok(()),
@@ -182,11 +183,19 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_stmt_err(&mut self, stmt: &Stmt) -> ResolveResult {
-        if let StmtKind::Err(expr) = &stmt.kind {
+        if let StmtKind::Throw(expr) = &stmt.kind {
             self.resolve_expr(expr)?;
             return Ok(());
         }
         unreachable!("Non-err statement passed to Resolver::resolve_stmt_err");
+    }
+
+    fn resolve_stmt_use(&mut self, stmt: &Stmt) -> ResolveResult {
+        if let StmtKind::Use(expr) = &stmt.kind {
+            self.resolve_expr(expr)?;
+            return Ok(());
+        }
+        unreachable!("Non-use statement passed to Resolver::resolve_stmt_use");
     }
 
     fn resolve_stmt_return(&mut self, stmt: &Stmt) -> ResolveResult {

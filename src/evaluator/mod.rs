@@ -1,5 +1,6 @@
 pub mod env;
 pub mod function;
+pub mod loader;
 pub mod natives;
 pub mod object;
 pub mod prototype;
@@ -7,7 +8,12 @@ pub mod resolver;
 pub mod runtime_err;
 pub mod value;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use ordered_float::OrderedFloat;
 
@@ -15,6 +21,7 @@ use crate::{
     evaluator::{
         env::{Env, EnvPtr},
         function::Function,
+        loader::{Loader, LoaderPtr},
         natives::Natives,
         object::{Instance, Method, Object},
         prototype::{BoundMethod, ValuePrototypes},
@@ -36,6 +43,7 @@ pub struct Evaluator<'a> {
     globals: EnvPtr,
     env: EnvPtr,
     prototypes: ValuePrototypes,
+    loader: LoaderPtr,
 }
 
 impl<'a> Evaluator<'a> {
@@ -48,31 +56,38 @@ impl<'a> Evaluator<'a> {
             globals,
             env: Env::new(),
             prototypes: ValuePrototypes::new(),
+            loader: Rc::new(RefCell::new(Loader::default())),
         };
         this.env = this.globals.clone();
         this
     }
 
-    pub fn eval(&mut self) {
+    pub fn with_loader(src: &'a Src, loader: LoaderPtr) -> Self {
+        let mut evaluator = Evaluator::new(src);
+        evaluator.loader = loader;
+        evaluator
+    }
+
+    pub fn eval(&mut self) -> EvalResult<()> {
         for stmt in self.ast.clone().iter() {
             match self.eval_stmt(stmt) {
                 Ok(_) => {}
                 Err(err) => {
                     if let RuntimeEvent::Err(RuntimeErr {
                         kind, msg, cursor, ..
-                    }) = err
+                    }) = &err
                     {
-                        Reporter::error_at(&msg, kind.to_string(), self.src, cursor);
-                        return;
+                        Reporter::error_at(msg, kind.to_string(), self.src, *cursor);
                     }
-                    if let RuntimeEvent::UserErr { val, cursor } = err {
+                    if let RuntimeEvent::UserErr { val, cursor } = &err {
                         let msg = format!("user error: {}", val);
-                        Reporter::error_at(msg.as_str(), "UserErr".into(), self.src, cursor);
-                        return;
+                        Reporter::error_at(msg.as_str(), "UserErr".into(), self.src, *cursor);
                     }
+                    return Err(err);
                 }
             }
         }
+        Ok(())
     }
 
     // Statement functions
@@ -80,7 +95,8 @@ impl<'a> Evaluator<'a> {
     fn eval_stmt(&mut self, stmt: &Stmt) -> EvalResult<()> {
         match &stmt.kind {
             StmtKind::Expr(_) => self.eval_stmt_expr(stmt),
-            StmtKind::Err(_) => self.eval_stmt_err(stmt),
+            StmtKind::Throw(_) => self.eval_stmt_throw(stmt),
+            StmtKind::Use(_) => self.eval_stmt_use(stmt),
             StmtKind::Return(_) => self.eval_stmt_return(stmt),
             StmtKind::Break => self.eval_stmt_break(stmt),
             StmtKind::Continue => self.eval_stmt_continue(stmt),
@@ -95,12 +111,42 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn eval_stmt_err(&mut self, stmt: &Stmt) -> EvalResult<()> {
-        if let StmtKind::Err(expr) = &stmt.kind {
+    fn eval_stmt_throw(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::Throw(expr) = &stmt.kind {
             let val = self.eval_expr(expr)?;
             return Err(RuntimeEvent::user_err(val, stmt.cursor));
         }
-        unreachable!("Non-err statement passed to Evaluator::eval_stmt_err");
+        unreachable!("Non-throw statement passed to Evaluator::eval_stmt_throw");
+    }
+
+    fn eval_stmt_use(&mut self, stmt: &Stmt) -> EvalResult<()> {
+        if let StmtKind::Use(expr) = &stmt.kind {
+            let val = self.eval_expr(expr)?;
+            let path_rc = val.check_str(stmt.cursor, Some("use path".into()))?;
+            let path_str = path_rc.borrow().clone();
+
+            // Resolve relative to current source file.
+            let caller_dir = self.src.file.parent().unwrap_or_else(|| Path::new("."));
+
+            match Loader::load(self.loader.clone(), PathBuf::from(path_str), caller_dir) {
+                Ok(env) => {
+                    // Merge imported globals into our globals.
+                    for (name, value) in env.borrow().entries() {
+                        self.globals.borrow_mut().define(name, value);
+                    }
+
+                    return Ok(());
+                }
+                Err(_) => {
+                    return Err(RuntimeEvent::error(
+                        ErrKind::IO,
+                        "failed to load file".into(),
+                        stmt.cursor,
+                    ));
+                }
+            }
+        }
+        unreachable!("Non-continue statement passed to Evaluator::eval_stmt_continue");
     }
 
     fn eval_stmt_return(&mut self, stmt: &Stmt) -> EvalResult<()> {

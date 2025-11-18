@@ -4,7 +4,8 @@ use crate::{lexer::cursor::Cursor, parser::expr::Expr};
 pub enum StmtKind {
     Expr(Expr),
     Return(Option<Expr>),
-    Err(Expr),
+    Throw(Expr),
+    Use(Expr),
     Break,
     Continue,
     Var {
@@ -27,14 +28,14 @@ pub enum StmtKind {
         item: String,
         index: Option<String>,
         iter: Expr,
-        body: Box<Stmt>
+        body: Box<Stmt>,
     },
     Try {
         body: Box<Stmt>,
         err_kind: Option<String>,
         err_val: Option<String>,
         catch: Box<Stmt>,
-        ensure: Option<Box<Stmt>>
+        ensure: Option<Box<Stmt>>,
     },
     Fn {
         name: String,

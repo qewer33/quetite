@@ -116,5 +116,7 @@ fn main() {
     };
 
     let mut evaluator = Evaluator::new(&src);
-    evaluator.eval();
+    if evaluator.eval().is_err() {
+        std::process::exit(1);
+    }
 }

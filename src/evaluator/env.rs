@@ -91,4 +91,12 @@ impl Env {
         }
         current
     }
+
+    /// Clone all bindings in the current scope (no enclosing scopes).
+    pub fn entries(&self) -> Vec<(String, Value)> {
+        self.values
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
 }

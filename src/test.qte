@@ -1,9 +1,4 @@
-try do
-    println("try")
-    throw "amogus"
-catch e, v do
-    println(v)
-    throw "sus"
-ensure do
-    println("ensure")
-end
+use "script.qte"
+
+println(a)
+amogus()

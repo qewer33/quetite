@@ -230,7 +230,10 @@ impl<'a> Parser<'a> {
 
     fn stmt(&mut self) -> ParseResult<Stmt> {
         if self.match_keyword(KeywordKind::Throw) {
-            return self.err_stmt();
+            return self.throw_stmt();
+        }
+        if self.match_keyword(KeywordKind::Use) {
+            return self.use_stmt();
         }
         if self.match_keyword(KeywordKind::Return) {
             return self.return_stmt();
@@ -400,14 +403,24 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn err_stmt(&mut self) -> ParseResult<Stmt> {
+    fn throw_stmt(&mut self) -> ParseResult<Stmt> {
         let cursor = self.current().cursor.clone();
         let val = self.expr()?;
         self.consume(
             TokenKindDiscriminants::EOL,
             "expected '\\n' after error value",
         )?;
-        Ok(Stmt::new(StmtKind::Err(val), cursor))
+        Ok(Stmt::new(StmtKind::Throw(val), cursor))
+    }
+
+    fn use_stmt(&mut self) -> ParseResult<Stmt> {
+        let cursor = self.current().cursor.clone();
+        let val = self.expr()?;
+        self.consume(
+            TokenKindDiscriminants::EOL,
+            "expected '\\n' after script path",
+        )?;
+        Ok(Stmt::new(StmtKind::Use(val), cursor))
     }
 
     fn return_stmt(&mut self) -> ParseResult<Stmt> {
@@ -964,6 +977,10 @@ impl<'a> Parser<'a> {
     }
 
     fn previous(&self) -> Token {
+        if self.curr == 0 {
+            return self.current();
+        }
+
         self.tokens[self.curr - 1].clone()
     }
 
