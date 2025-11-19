@@ -210,7 +210,7 @@ impl Value {
         match self {
             Value::Bool(b) => *b,
             Value::Null => false,
-            Value::Num(n) => *n == 0.,
+            Value::Num(n) => *n != 0.,
             _ => true,
         }
     }
