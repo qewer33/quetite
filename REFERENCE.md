@@ -1,7 +1,6 @@
 # The Quetite Language Reference
 
 This document aims to be a quick and simple reference guide for the quetite language. It provides the necessary details for the programmer to get started with quetite without going into too much unnecessary detail. This document is mainly about the language syntax and features, for the full language stdlib API documentation, see the *API reference*.
-This document aims to be a quick and simple reference guide for the quetite language. It provides the necessary details for the programmer to get started with quetite without going into too much unnecessary detail. This document is mainly about the language syntax and features, for the full language stdlib API documentation, see the *API reference*.
 
 ## Quick Start
 
@@ -38,19 +37,15 @@ For variable and function identifiers, `snake_case` is recommended. For object i
 
 ### Whitespaces & Newlines
 
-Quetite is a line oriented language, statements are terminated by newlines. Indentation and whitespaces are ignored and have no effect but proper indentation of quetite code is recommended for readibility.
+Quetite is a line oriented language, statements are terminated by newlines. Indentation and whitespaces are ignored and have no effect but proper indentation of quetite code is recommended for readability.
 
 ## Type System
 
-Quetite is a dynamically typed language, meaning the types aren't explicitly known at compile time but are rather evaluated at runtime.
 Quetite is a dynamically typed language, meaning the types aren't explicitly known at compile time but are rather evaluated at runtime.
 
 Quetite has 8 value types:
 - **Null**: The `Null` literal, representing the absence of a value.
 - **Bool**: The boolean value type, can either be `true` or `false`.
-- **Num**: The number type, can hold integer or floating point numbers.
-- **Bool**: The boolean value type, can either be `true` or `false`.
-- **Num**: The number type, can hold integer or floating point numbers.
 - **Str**: The string type, holds a dynamically allocated string value.
 - **List**: The list type, can hold any amount of any type of elements.
 - **Callable**: The callable type, holds a function or method definition.
@@ -68,74 +63,10 @@ All values share an internal `Value` prototype which holds methods that can be c
 ### Runtime Type Checking
 
 The following methods defined in the Value prototype can be used for runtime type checking in quetite:
-The following methods defined in the Value prototype can be used for runtime type checking in quetite:
 
 - `type()`: Returns the type of the value as an Str.
 - `type_of(type)`: Expects a type as an Str. Returns `true` if the type of the value matches the given type, `false` otherwise.
 - `type_check(type)`: Expects a type as an Str. Returns `true` if the type of the value matches the given type, throws a `TypeErr` otherwise. This function is recommended for ensuring types of function parameters.
-
-### Type Conversions
-
-Type conversions in quetite are done with the `to_*()` methods provided in value prototypes. The Num prototype for example, provides the `to_str()` and `to_bool()` methods to convert the Num value to an Str and a Bool respectively. 
-
-### Types in Detail
-
-#### Null
-
-The null type that can only be the Null literal. The Null literal represents an absent or unknown value. It's also the value returned from functions without a `return` statement (or an empty one).
-
-#### Bool
-
-The boolean type that can either be `true` or `false`.
-
-#### Num
-
-The number type holds integer and floating point numbers. Internally it's a 64 bit float.  The Num prototype provides many functions to make it easier to work with numbers.
-
-```rb
-# an integer and a float
-var int = 10
-var float = 10.25
-
-# rounding a float to an integer
-# a = 10
-var a = 10.36.round()
-```
-
-#### Str
-
-The string type that holds a dynamically allocated string. String literals are created with the double quote character (`""`). Strings are indexable. The Str prototype provides many functions to make it easier to work with strings.
-
-```rb
-# defining an Str
-var str = "hello quetite!"
-
-# indexing an Str
-# prints "h"
-println(str[0])
-
-# length of an Str
-# prints 13
-println(str.len())
-```
-
-#### List
-
-The list type that holds a dynamically allocated list. A List can hold any type and any number of elements, it can also hold mixed types of elements. List literals are created with square braces (`[]`) and the list elements are separated with commas (`,`). Lists are indexable. The List prototype provides many functions to make it easier to work with lists.
-
-```rb
-# defining a List
-var fruits = ["Apple", "Orange", "Banana"]
-var stuff = ["Among Us", 12, true, Null]
-
-# indexing a List
-# prints "orange"
-println(fruits[1])
-
-# length of a List
-# prints 4
-println(stuff.len())
-```
 
 ### Type Conversions
 
@@ -207,9 +138,7 @@ Quetite has two distinct grammar structures, statements and expressions. Express
 ### Expressions
 
 #### Arithmetic
-#### Arithmetic
 
-Arithmetic expressions in quetite are very similar with other mainstream scripting languages. All of the classic arithmetic operators are included, along with some less common ones like the power (`a**b`) operator.
 Arithmetic expressions in quetite are very similar with other mainstream scripting languages. All of the classic arithmetic operators are included, along with some less common ones like the power (`a**b`) operator.
 
 | **Expression** | **Operator** | **Usage** |
@@ -222,11 +151,9 @@ Arithmetic expressions in quetite are very similar with other mainstream scripti
 | Power          | **           | a**b      |
 
 The Num type supports every kind of arithmetic operation while Str supports only addition (string concatenation). Other types don't support any arithmetic operations.
-The Num type supports every kind of arithmetic operation while Str supports only addition (string concatenation). Other types don't support any arithmetic operations.
 
 #### Boolean
 
-Boolean expressions in quetite are very similar with other mainstream scripting languages. All of the classic boolean operators are included, along with some less common ones like the nullish coalescing (`a ?? b`) operator.
 Boolean expressions in quetite are very similar with other mainstream scripting languages. All of the classic boolean operators are included, along with some less common ones like the nullish coalescing (`a ?? b`) operator.
 
 | **Expression**     | **Operator** | **Usage** |
@@ -247,41 +174,6 @@ The equal operation is supported by all value types but only works if `a` and `b
 
 #### Group
 
-A group is used to change the evaluation order of expressions, it's defined with a set of parentheses (`()`).
-
-```rb
-var a = 5 * (4 + 3)
-
-# call Num.round() on the resulting expression
-var b = (5.32 * a).round()
-```
-
-#### Ternary
-
-The classic ternary (`condition ? true : false`) expression is a simple way to conditionally return a value. It works exactly the same way it does in C.
-
-```rb
-var a = 5
-var b = 10
-
-# assign c to the smaller number
-var c = a < b ? a : b
-```
-
-#### Range
-
-A range expressions is syntax sugar for creating List's of ordered numbers. Ranges are created with the `..` and `..=` operators, the `..=` operator includes the end value in the range meanwhile the `..` operator doesn't. A range can also have an optional `step` expression that specifies the "step" (increment amount) between the range values.
-
-```rb
-# a, b and c are the same!
-var a = [0, 1, 2]
-var b = 0..3
-var c = 0..=2
-
-# range with a step
-var a = [0, 2, 4, 8]
-var b = 0..=8 step 2
-```
 A group is used to change the evaluation order of expressions, it's defined with a set of parentheses (`()`).
 
 ```rb
@@ -633,110 +525,9 @@ statement      → exprStmt
 exprStmt       → expression EOL ;
 ifStmt         → "if" expression statement
                ( "else" statement )? ;
-returnStmt     → "return" expression EOL ;
-throwStmt      → "throw" expression EOL ;
-breakStmt      → "break" EOL ; 
-continueStmt   → "continue" EOL ; 
-tryStmt        → "try" statement "catch" IDENTIFIER statement ;
-forStmt        → "for" IDENTIFIER ( "," IDENTIFIER )? "in" expression "do" statement ;
-whileStmt      → varDeclrHeader? "while" expression ("step" assignment)? statement ;
-useStmt        → "use" expression EOL ;
-block          → "do" declaration "end" ;
-
-expression     → assignment ;
-assignment     → ( call "." )? IDENTIFIER ( ( "=" | "+=" | "-=" ) assignment | ( "++" | "--" ) )
-               | ternary_or ;
-ternary        → logic_r ( "?" expression ":" ternary )? ;
-logic_or       → logic_and ( "or" logic_and )* ;
-logic_and      → equality ( "and" equality )* ;
-equality       → comparison ( ( "!=" | "==" ) comparison )* ;
-comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-term           → factor ( ( "-" | "+" ) factor )* ;
-factor         → unary ( ( "/" | "*" | "**" | "??" ) unary )* ;
-unary          → ( "!" | "-" ) unary | call ;
-arguments      → expression ( "," expression )* ;
-call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
-range          → expr ( ".." | "..=" ) expr ( "step" expr )? ; 
-list           - "[" arguments? "]" ;
-primary        → NUMBER | STRING | "true" | "false" | "Null"
-               | "(" expression ")"
-               | IDENTIFIER ;
-```
-
-#### Use
-
-The `use` statement makes it possible to import scripts inside other scripts. It expects an Str after the keyword as the path of the script to be loaded. When loading a script, the interpreter first interprets the script to be loaded and then loads everything in the resulting global environment of the script (variable, function and object declarations) to the global environment of the current script.
-
-```rb
-# other.qte
-var a = 10
-```
-
-```rb
-# main.qte
-use "other.qte"
-
-# prints 10
-println(a)
-```
-
-## Appendix
-
-### Appendix A: Keywords
-
-- do
-- end
-- if
-- else
-- for
-- while
-- return
-- break
-- continue
-- use
-- self
-- var
-- and
-- or
-- step
-- in
-- fn
-- obj
-- throw
-- try
-- catch
-- ensure
-
-### Appendix B: BNF Grammar
-
-```ebnf
-program        → statement* EOF ;
-
-declaration    → classDecl
-               | funDecl
-               | varDecl
-               | statement ;
-
-classDecl      → "obj" IDENTIFIER "do" function* "end" ;
-funDeclr       → "fn" function ;
-function       → IDENTIFIER "(" parameters? ")" block ;
-parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
-varDeclr       → "var" IDENTIFIER ( "=" expression )? EOL ;
-varDeclrHeader → "var" IDENTIFIER "=" expression ;
-
-statement      → exprStmt
-               | ifStmt
-               | returnStmt
-               | breakStmt
-               | continueStmt
-               | forStmt
-               | whileStmt
-               | block ;
-
-exprStmt       → expression EOL ;
-ifStmt         → "if" expression statement
-               ( "else" statement )? ;
-matchStmt      → "match" expression "do" ( expression statement )* ( "end" | ( "else" statement )? ) ;
+matchStmt      → "match" expression "do" 
+               ( expression statement )* 
+               ( "end" | ( "else" statement )? ) ;
 returnStmt     → "return" expression EOL ;
 throwStmt      → "throw" expression EOL ;
 breakStmt      → "break" EOL ; 
