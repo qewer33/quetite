@@ -1,4 +1,6 @@
 use "script.qte"
 
-println(a)
+var a12 = 5
+
+println(a12)
 amogus()
