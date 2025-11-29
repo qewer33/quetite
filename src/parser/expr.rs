@@ -10,6 +10,7 @@ use crate::lexer::{
 pub enum ExprKind {
     Literal(LiteralType),
     List(Vec<Expr>),
+    Dict(Vec<(Expr, Expr)>),
     Range {
         start: Box<Expr>,
         end: Box<Expr>,

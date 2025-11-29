@@ -2,6 +2,8 @@ pub mod expr;
 pub mod parse_err;
 pub mod stmt;
 
+use std::collections::HashMap;
+
 use ordered_float::OrderedFloat;
 use strum::IntoDiscriminant;
 
@@ -843,9 +845,7 @@ impl<'a> Parser<'a> {
     }
 
     fn list(&mut self) -> ParseResult<Expr> {
-        if let TokenKind::LBracket = self.current().kind {
-            self.next();
-
+        if self.match_tokens(vec![TokenKindDiscriminants::LBracket]) {
             let mut elements: Vec<Expr> = vec![];
 
             if !self.check(TokenKindDiscriminants::RBracket) {
@@ -866,6 +866,41 @@ impl<'a> Parser<'a> {
             )?;
 
             return Ok(Expr::new(ExprKind::List(elements), rbrack.cursor));
+        }
+
+        self.dict()
+    }
+
+    fn dict(&mut self) -> ParseResult<Expr> {
+        if self.match_tokens(vec![TokenKindDiscriminants::LBrace]) {
+            let mut map: Vec<(Expr, Expr)> = vec![];
+
+            if !self.check(TokenKindDiscriminants::RBracket) {
+                loop {
+                    self.skip_eols();
+
+                    let key = self.expr()?;
+                    self.consume(
+                        TokenKindDiscriminants::Colon,
+                        "expected ':' to seperate dict key and value",
+                    )?;
+                    let value = self.expr()?;
+
+                    map.push((key, value));
+
+                    if !self.match_tokens(vec![TokenKindDiscriminants::Comma]) {
+                        break;
+                    }
+                }
+            }
+
+            self.skip_eols();
+            let rbrack = self.consume(
+                TokenKindDiscriminants::RBrace,
+                "expected '}' to end dict definition".into(),
+            )?;
+
+            return Ok(Expr::new(ExprKind::Dict(map), rbrack.cursor));
         }
 
         self.primary()

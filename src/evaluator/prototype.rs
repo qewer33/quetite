@@ -1,6 +1,6 @@
 use ordered_float::OrderedFloat;
 
-use crate::{evaluator::runtime_err::RuntimeErr, native_fn};
+use crate::native_fn;
 use colored::Colorize;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -8,7 +8,7 @@ use crate::{
     evaluator::{
         EvalResult, Evaluator,
         runtime_err::{ErrKind, RuntimeEvent},
-        value::{Callable, Value},
+        value::{Callable, Value, ValueKey},
     },
     lexer::cursor::Cursor,
 };
@@ -103,6 +103,7 @@ pub struct ValuePrototypes {
     pub str: Prototype,
     pub num: Prototype,
     pub bool: Prototype,
+    pub dict: Prototype,
 }
 
 impl ValuePrototypes {
@@ -112,11 +113,13 @@ impl ValuePrototypes {
         let str = ValuePrototypes::str_proto(&value);
         let num = ValuePrototypes::num_proto(&value);
         let bool = ValuePrototypes::bool_proto(&value);
+        let dict = ValuePrototypes::dict_proto(&value);
         Self {
             list,
             str,
             num,
             bool,
+            dict,
         }
     }
 
@@ -518,6 +521,144 @@ impl ValuePrototypes {
                     } else {
                         return Ok(Value::Num(OrderedFloat(0.0)));
                     }
+                }
+                unreachable!()
+            }
+        );
+
+        proto
+    }
+
+    pub fn dict_proto(value_proto: &Rc<Prototype>) -> Prototype {
+        let mut proto = Prototype::with_parent("Dict".to_string(), value_proto);
+
+        // len() -> Num: returns number of key-value pairs
+        proto_method!(
+            proto,
+            DictLen,
+            "len",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let len = dict.borrow().len() as f64;
+                    return Ok(Value::Num(len.into()));
+                }
+                unreachable!()
+            }
+        );
+
+        // contains(key) -> Bool: returns true if key exists
+        proto_method!(
+            proto,
+            DictContains,
+            "contains",
+            1,
+            |_evaluator, args, cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let key = ValueKey::try_from(&args[1]).map_err(|_| {
+                        RuntimeEvent::error(
+                            ErrKind::Type,
+                            "only Null, Bool, Num or Str values can be Dict keys".into(),
+                            cursor,
+                        )
+                    })?;
+                    return Ok(Value::Bool(dict.borrow().contains_key(&key)));
+                }
+                unreachable!()
+            }
+        );
+
+        // insert(key, value): inserts or updates value for key
+        proto_method!(
+            proto,
+            DictInsert,
+            "insert",
+            2,
+            |_evaluator, args, cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let key = ValueKey::try_from(&args[1]).map_err(|_| {
+                        RuntimeEvent::error(
+                            ErrKind::Type,
+                            "only Null, Bool, Num or Str values can be Dict keys".into(),
+                            cursor,
+                        )
+                    })?;
+                    let val = args[2].clone();
+                    dict.borrow_mut().insert(key, val);
+                    return Ok(Value::Null);
+                }
+                unreachable!()
+            }
+        );
+
+        // remove(key) -> Value: removes key, returns removed value or Null if missing
+        proto_method!(
+            proto,
+            DictRemove,
+            "remove",
+            1,
+            |_evaluator, args, cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let key = ValueKey::try_from(&args[1]).map_err(|_| {
+                        RuntimeEvent::error(
+                            ErrKind::Type,
+                            "only Null, Bool, Num or Str values can be Dict keys".into(),
+                            cursor,
+                        )
+                    })?;
+                    return Ok(dict.borrow_mut().remove(&key).unwrap_or(Value::Null));
+                }
+                unreachable!()
+            }
+        );
+
+        // get(key) -> Value: returns value for key or Null if missing
+        proto_method!(
+            proto,
+            DictGet,
+            "get",
+            1,
+            |_evaluator, args, cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let key = ValueKey::try_from(&args[1]).map_err(|_| {
+                        RuntimeEvent::error(
+                            ErrKind::Type,
+                            "only Null, Bool, Num or Str values can be Dict keys".into(),
+                            cursor,
+                        )
+                    })?;
+                    return Ok(dict.borrow().get(&key).cloned().unwrap_or(Value::Null));
+                }
+                unreachable!()
+            }
+        );
+
+        // keys() -> List: returns list of keys
+        proto_method!(
+            proto,
+            DictKeys,
+            "keys",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let keys: Vec<Value> =
+                        dict.borrow().keys().cloned().map(|k| k.into()).collect();
+                    return Ok(Value::List(Rc::new(RefCell::new(keys))));
+                }
+                unreachable!()
+            }
+        );
+
+        // values() -> List: returns list of values
+        proto_method!(
+            proto,
+            DictValues,
+            "values",
+            0,
+            |_evaluator, args, _cursor, recv| {
+                if let Value::Dict(dict) = recv {
+                    let values: Vec<Value> = dict.borrow().values().cloned().collect();
+                    return Ok(Value::List(Rc::new(RefCell::new(values))));
                 }
                 unreachable!()
             }

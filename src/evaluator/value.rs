@@ -1,6 +1,8 @@
 use std::{
     cell::RefCell,
+    collections::HashMap,
     fmt::{Debug, Display},
+    ops::Deref,
     rc::Rc,
 };
 
@@ -23,6 +25,7 @@ pub enum Value {
     Num(OrderedFloat<f64>),
     Str(Rc<RefCell<String>>),
     List(Rc<RefCell<Vec<Value>>>),
+    Dict(Rc<RefCell<HashMap<ValueKey, Value>>>),
     Callable(Rc<dyn Callable>),
     Obj(Rc<Object>),
     ObjInstance(Rc<RefCell<Instance>>),
@@ -41,7 +44,48 @@ impl Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Num(n) => write!(f, "{}", n.0),
             Value::Str(s) => write!(f, "{}", s.borrow()),
-            Value::List(l) => write!(f, "{:?}", l),
+            Value::List(l) => {
+                write!(
+                    f,
+                    "[{}]",
+                    l.borrow()
+                        .iter()
+                        .map(|e| if e.get_type() == "Str" {
+                            format!("\"{}\"", e)
+                        } else {
+                            e.to_string()
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+            }
+            Value::Dict(d) => {
+                let entries = d
+                    .borrow()
+                    .iter()
+                    .map(|(key, value)| {
+                        let key_str = match key {
+                            ValueKey::Str(s) => format!("\"{}\"", s),
+                            ValueKey::Bool(b) => b.to_string(),
+                            ValueKey::Num(n) => n.0.to_string(),
+                            ValueKey::Null => "Null".into(),
+                        };
+                        let val_str = if value.get_type() == "Str" {
+                            format!("\"{}\"", value)
+                        } else {
+                            value.to_string()
+                        };
+                        format!("  {}: {}", key_str, val_str)
+                    })
+                    .collect::<Vec<String>>()
+                    .join(",\n");
+
+                if entries.is_empty() {
+                    write!(f, "{{}}")
+                } else {
+                    write!(f, "{{\n{}\n}}", entries)
+                }
+            }
             Value::Callable(c) => write!(f, "{:?}", c),
             Value::Obj(o) => write!(f, "{}", o.name),
             Value::ObjInstance(i) => write!(f, "{}", i.borrow().to_string()),
@@ -56,6 +100,7 @@ impl Value {
             Value::Str(_) => Some(&prototypes.str),
             Value::List(_) => Some(&prototypes.list),
             Value::Bool(_) => Some(&prototypes.bool),
+            Value::Dict(_) => Some(&prototypes.dict),
             _ => None,
         }
     }
@@ -67,6 +112,7 @@ impl Value {
             Value::Num(_) => "Num".to_string(),
             Value::Str(_) => "Str".to_string(),
             Value::List(_) => "List".to_string(),
+            Value::Dict(_) => "Dict".to_string(),
             Value::Callable(_) => "Fn".to_string(),
             Value::Obj(_) => "Obj".to_string(),
             Value::ObjInstance(inst) => inst.borrow().obj.name.clone(),
@@ -186,6 +232,10 @@ impl Value {
                 // TODO: implement list eq
                 return false;
             }
+            Value::Dict(_) => {
+                // TODO: implement dict eq
+                return false;
+            }
             Value::Obj(o) => {
                 if let Value::Obj(oo) = other {
                     return o.name == oo.name;
@@ -288,4 +338,38 @@ pub trait Callable: Debug {
         args: Vec<Value>,
         cursor: Cursor,
     ) -> EvalResult<Value>;
+}
+
+// Hashable value types that can be used as Dict keys
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum ValueKey {
+    Null,
+    Bool(bool),
+    Num(OrderedFloat<f64>),
+    Str(String),
+}
+
+impl TryFrom<&Value> for ValueKey {
+    type Error = ();
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Null => Ok(ValueKey::Null),
+            Value::Bool(b) => Ok(ValueKey::Bool(*b)),
+            Value::Num(n) => Ok(ValueKey::Num(*n)),
+            Value::Str(s) => Ok(ValueKey::Str((*s.deref().borrow().deref()).clone())),
+            _ => Err(()),
+        }
+    }
+}
+
+impl Into<Value> for ValueKey {
+    fn into(self) -> Value {
+        match self {
+            ValueKey::Null => Value::Null,
+            ValueKey::Bool(b) => Value::Bool(b),
+            ValueKey::Num(n) => Value::Num(n),
+            ValueKey::Str(s) => Value::Str(Rc::new(RefCell::new(s))),
+        }
+    }
 }

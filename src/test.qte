@@ -1,7 +1,9 @@
-var a = [0, 1, 2, 3]
+var a = {
+    "amogus": 10,
+    Null: "sus"
+}
 
-a[0..2] = ["amogus", "sus", "imposter"]
+var b = [10, 2]
 
-for e in a do
-    println(e)
-end
+a[Null] = 10
+println(a[Null])

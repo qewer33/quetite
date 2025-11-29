@@ -1,43 +1,43 @@
 # The Quetite Language Reference
 
-This document aims to be a quick and simple reference guide for the quetite language. It provides the necessary details for the programmer to get started with quetite without going into too much unnecessary detail. This document is mainly about the language syntax and features, for the full language stdlib API documentation, see the *API reference*.
+This document aims to be a quick and simple reference guide for the Quetite language. It provides the necessary details for the programmer to get started with Quetite without going into too much unnecessary detail. This document is mainly about the language syntax and features, for the full language stdlib API documentation, see the *API reference*.
 
 ## Quick Start
 
-Start by creating a new file with the `.qte` extension (eg. `hello.qte`). You can choose the Ruby language as the syntax highlighting in your editor (doesn't highlight everything correctly but it's mostly decent since quetite syntax is similar to Ruby). Write the following line inside the file:
+Start by creating a new file with the `.qte` extension (eg. `hello.qte`). You can choose the Ruby language as the syntax highlighting in your editor (doesn't highlight everything correctly but it's mostly decent since Quetite syntax is similar to Ruby). Write the following line inside the file:
 
 ```rb
 println("Hello World")
 ```
 
-To execute the file, pass it as an argument to the quetite interpreter:
+To execute the file, pass it as an argument to the Quetite interpreter:
 
 ```sh
 quetite hello.qte
 ```
 
-You just wrote and ran your first quetite script, congrats! :D
+You just wrote and ran your first Quetite script, congrats! :D
 
 ## Lexical Structure
 
 ### Comments
 
-Comments in quetite start with the hash (`#`) character and continue to the end of the line. Quetite does not currently support multi-line comment blocks; use multiple single-line comments instead.
+Comments in Quetite start with the hash (`#`) character and continue to the end of the line. Quetite does not currently support multi-line comment blocks; use multiple single-line comments instead.
 
 ```rb
-# hello quetite!
+# hello Quetite!
 # this is a comment
 ```
 
 ### Identifiers
 
-Identifiers are names used for variables, functions and objects. Identifiers in quetite can only contain letters, numbers or underscores (`_`). Identifiers cannot start with a number. Identifiers are case sensitive.
+Identifiers are names used for variables, functions and objects. Identifiers in Quetite can only contain letters, numbers or underscores (`_`). Identifiers cannot start with a number. Identifiers are case sensitive.
 
 For variable and function identifiers, `snake_case` is recommended. For object identifiers, `PascalCase` is preffered.
 
 ### Whitespaces & Newlines
 
-Quetite is a line oriented language, statements are terminated by newlines. Indentation and whitespaces are ignored and have no effect but proper indentation of quetite code is recommended for readability.
+Quetite is a line oriented language, statements are terminated by newlines. Indentation and whitespaces are ignored and have no effect but proper indentation of Quetite code is recommended for readability.
 
 ## Type System
 
@@ -48,6 +48,7 @@ Quetite has 8 value types:
 - **Bool**: The boolean value type, can either be `true` or `false`.
 - **Str**: The string type, holds a dynamically allocated string value.
 - **List**: The list type, can hold any amount of any type of elements.
+- **Dict**: The dictionary type, holds key-value pairs of elements.
 - **Callable**: The callable type, holds a function or method definition.
 - **Obj**: The obj type, holds an object definition.
 - **ObjInstance**: Each object instance acts like it's own type but internally, they're represented as a single object instance type.
@@ -58,11 +59,11 @@ In Bool contexts (such as the conditions in an `if` or `while` statement), non-B
 
 ### Type Prototypes
 
-All values share an internal `Value` prototype which holds methods that can be called from all values regardless of it's type (methods such as `type()`). The `Bool`, `Num`, `Str` and `List` types also have their own respective internal prototypes. Check out the *API reference* to see which functions are defined for which prototype.
+All values share an internal `Value` prototype which holds methods that can be called from all values regardless of it's type (methods such as `type()`). The `Bool`, `Num`, `Str`, `List` and `Dict` types also have their own respective internal prototypes. Check out the *API reference* to see which functions are defined for which prototype.
 
 ### Runtime Type Checking
 
-The following methods defined in the Value prototype can be used for runtime type checking in quetite:
+The following methods defined in the Value prototype can be used for runtime type checking in Quetite:
 
 - `type()`: Returns the type of the value as an Str.
 - `type_of(type)`: Expects a type as an Str. Returns `true` if the type of the value matches the given type, `false` otherwise.
@@ -70,7 +71,7 @@ The following methods defined in the Value prototype can be used for runtime typ
 
 ### Type Conversions
 
-Type conversions in quetite are done with the `to_*()` methods provided in value prototypes. The Num prototype for example, provides the `to_str()` and `to_bool()` methods to convert the Num value to an Str and a Bool respectively. 
+Type conversions in Quetite are done with the `to_*()` methods provided in value prototypes. The Num prototype for example, provides the `to_str()` and `to_bool()` methods to convert the Num value to an Str and a Bool respectively. 
 
 ### Types in Detail
 
@@ -94,7 +95,7 @@ var c = a or b
 
 #### Num
 
-The number type holds integer and floating point numbers. Internally it's a 64 bit float. The Num prototype provides many functions to make it easier to work with numbers.
+The number type holds integer and floating point numbers. Internally it's a 64 bit float. The Num prototype provides many functions to make it easier to work with Nums.
 
 ```rb
 # an integer and a float
@@ -108,11 +109,11 @@ var a = 10.36.round()
 
 #### Str
 
-The string type that holds a dynamically allocated string. String literals are created with the double quote character (`""`). Str values can be indexed with the indexing (`value[i]`) syntax, the index should either be a Num or a List of Nums. The Str prototype provides many functions to make it easier to work with strings.
+The string type that holds a dynamically allocated string. String literals are created with the double quote character (`""`). Str values can be indexed with the indexing (`value[i]`) syntax, the index should either be a Num or a List of Nums. The Str prototype provides many functions to make it easier to work with Strs.
 
 ```rb
 # defining an Str
-var str = "hello quetite!"
+var str = "hello Quetite!"
 
 # indexing an Str
 # prints "h"
@@ -125,7 +126,7 @@ println(str.len())
 
 #### List
 
-The list type that holds a dynamically allocated list. A List can hold any type and any number of elements, it can also hold mixed types of elements. List literals are created with square braces (`[]`) and the list elements are separated with commas (`,`). Str values can be indexed with the indexing (`value[i]`) syntax, the index should either be a Num or a List of Nums. The List prototype provides many functions to make it easier to work with lists.
+The list type that holds a dynamically allocated list. A List can hold any type and any number of elements, it can also hold mixed types of elements. List literals are created with square braces (`[]`) and the list elements are separated with commas (`,`). Str values can be indexed with the indexing (`value[i]`) syntax, the index should either be a Num or a List of Nums. The List prototype provides many functions to make it easier to work with Lists.
 
 ```rb
 # defining a List
@@ -141,9 +142,32 @@ println(fruits[1])
 println(stuff.len())
 ```
 
+#### Dict
+
+The dict type holds a dynamically allocated dictionary/map of elements in key-value pairs. Internally, it's represented as a HashMap; thus it can only have "hashable" value types as keys (`Null`, `Bool`, `Num` and `Str`). It can hold any type as a value. Dict literals are created with key-value pairs (`key: value`) defined inside curly braces (`{}`) and seperated by commas (`,`). Dict values can be indexed with the indexing (`value[i]`) syntax, the index should be one of the aforementioned hashable value types. The Dict prototype provides many functions to make it easier to work with Dicts.
+
+```rb
+# defining a Dict
+var stuff = {
+    "amogus": "sus",
+    Null: true,
+    5: "five",
+    false: 0
+}
+
+# indexing a Dict
+println(stuff["amogus"])
+println(stuff[Null])
+println(stuff[5])
+
+# length of a Dict
+# prints 4
+println(stuff.len())
+```
+
 #### Callable
 
-Functions in quetite are first-class as the Callable type, meaning they can be assigned to variables and passed around as arguments to other functions or as object fields.
+Functions in Quetite are first-class as the Callable type, meaning they can be assigned to variables and passed around as arguments to other functions or as object fields.
 
 ```rb
 # an example of passing a function to another function as callback
@@ -158,7 +182,7 @@ read_and_do(println)
 
 #### Obj
 
-Objects are also first-class in quetite, just like functions. Object definitions can be assigned to variables, passed around as function parameters and can be returned from functions.
+Objects are also first-class in Quetite, just like functions. Object definitions can be assigned to variables, passed around as function parameters and can be returned from functions.
 
 ## Grammar
 
@@ -168,7 +192,7 @@ Quetite has two distinct grammar structures, statements and expressions. Express
 
 #### Arithmetic
 
-Arithmetic expressions in quetite are very similar with other mainstream scripting languages. All of the classic arithmetic operators are included, along with some less common ones like the power (`a**b`) operator.
+Arithmetic expressions in Quetite are very similar with other mainstream scripting languages. All of the classic arithmetic operators are included, along with some less common ones like the power (`a**b`) operator.
 
 | **Expression** | **Operator** | **Usage** |
 |----------------|--------------|-----------|
@@ -183,7 +207,7 @@ The Num type supports every kind of arithmetic operation while Str supports only
 
 #### Boolean
 
-Boolean expressions in quetite are very similar with other mainstream scripting languages. All of the classic boolean operators are included, along with some less common ones like the nullish coalescing (`a ?? b`) operator.
+Boolean expressions in Quetite are very similar with other mainstream scripting languages. All of the classic boolean operators are included, along with some less common ones like the nullish coalescing (`a ?? b`) operator.
 
 | **Expression**     | **Operator** | **Usage** |
 |--------------------|--------------|-----------|
@@ -356,32 +380,32 @@ else println("invalid operation")
 
 #### While
 
-The classic `while` loop used for conditional looping. While loops in quetite also have special syntax for emulating C-style for loops in a single line with a variable declaration preceding the `while condition` part and a following `step` statement (see the example below).
+The classic `while` loop used for conditional looping. While loops in Quetite also have special syntax for emulating C-style for loops in a single line with a variable declaration preceding the `while condition` part and a following `step` statement (see the example below).
 
 The `break` and `continue` statements can be used inside a while loop to control loop iterations.
 
 ```rb
 # infinite loop
 while true do
-    println("quetite is cool!")
+    println("Quetite is cool!")
 end
 
 # emulating a C-style for loop
 var i = 0
 while i < 10 do
-    println("quetite is cool!")
+    println("Quetite is cool!")
     i++
 end
 
 # special syntax for emulating C-style for loops
 var i = 0 while i < 10 step i++ do
-    println("quetite is cool!")
+    println("Quetite is cool!")
 end
 ```
 
 #### For
 
-For loops in quetite are used to iterate over iterable values (List and Str) with the `for value, index in list` syntax. The `index` identifier can be omitted if not required.
+For loops in Quetite are used to iterate over iterable values (List and Str) with the `for value, index in list` syntax. The `index` identifier can be omitted if not required.
 
 The `break` and `continue` statements can be used inside a for loop to control loop iterations.
 
@@ -522,7 +546,7 @@ println(a)
 
 ## Standard Library
 
-The quetite standard library (stdlib) consists of functions and objects that are defined and implemented natively inside the qutite interpreter (in Rust). They are available to use in every quetite script without needing a `use` statement.
+The Quetite standard library (stdlib) consists of functions and objects that are defined and implemented natively inside the qutite interpreter (in Rust). They are available to use in every Quetite script without needing a `use` statement.
 
 The standard library has 4 global functions (all of which have been mentioned before in the document):
 
@@ -627,6 +651,7 @@ arguments      → expression ( "," expression )* ;
 call           → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
 range          → expr ( ".." | "..=" ) expr ( "step" expr )? ; 
 list           - "[" arguments? "]" ;
+dict           - "{" ( expression ":" expression ( "," expression ":" expression  )* )? "}" ;
 primary        → NUMBER | STRING | "true" | "false" | "Null"
                | "(" expression ")"
                | IDENTIFIER ;

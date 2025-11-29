@@ -418,6 +418,13 @@ impl<'a> Resolver<'a> {
                 }
                 Ok(())
             }
+            ExprKind::Dict(dict) => {
+                for (key, value) in dict {
+                    self.resolve_expr(key)?;
+                    self.resolve_expr(value)?;
+                }
+                Ok(())
+            }
             ExprKind::Range {
                 start, end, step, ..
             } => {

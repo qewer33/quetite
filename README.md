@@ -1,106 +1,91 @@
-# queitite
+![banner](assets/readme_banner.png)
 
-a simple interpreted scripting language
+Quetite is a small interpreted scripting language with a friendly, Ruby-like syntax, dynamic typing, and a stdlib of native helpers. It is built as a classic three-stage interpreter (lexer -> parser -> evaluator) in Rust.
+
+## Features
+- [x] Easy and familiar scripting language syntax, no semicolons, no indentation rules
+- [x] Fully dynamic type system (with types like `Bool`, `Num`, `Str` etc...)
+- [x] First class functions (`Callable` type) and objects with constructors, static and bound methods (`Obj` type)
+- [x] Fully dynamic lists and dictionaries (`List` and `Dict` types)
+- [x] Prototype methods on primitives (`Str.len()`, `List.push()`, `Dict.keys()`, etc.)
+- [x] Familiar control flow: `if/else`, `while`, `for` over iterables, `match`
+- [x] Runtime error handling system via `throw` and `try/catch/ensure`
+- [x] Misc scripting features such as: ranges (`..` and `..=` operators) and slices for lists/strings, nullish coalescing (`a ?? b`) and power (`**`) operators
+- [x] Truthiness rules (`false`, `Null`, `0` are falsy; everything else is truthy)
+- [x] Powerful and extensive stdlib (`Sys`, `Math`, `Rand`, `Term` etc.)
+- [x] Ability to include other scripts inside a script via `use`
+- [ ] REPL (coming soon!)
+- [ ] Ratatui bindings for the stdlib to create fun TUI apps! (half implemented, full implementation coming soon!)
+- [ ] Processing/p5.js like simple creative coding and graphics API for the stdlib to create fun games and creative programs! (half implemented, full implementation coming soon!)
+
+## Quick Start
+
+Prereqs: Rust toolchain installed via `rustup`.
+
+Build and run a script:
+```sh
+cargo run path/to/script.qte
+```
+
+Run the example `snake.qte`:
+```sh
+cargo run examples/snake.qte
+```
+
+Check out the examples folder to see other examples!
+
+## Example
 
 ```rb
-fn sq(n) = n*n
+# hello.qte
 
-fn main() do
-    var a = sq(10)
-    var b = true
-    b = false
+var who = "world"
+var nums = 0..=4
+var facts = {
+    "name": who,
+    "lucky": nums[3],
+}
 
-    # this is a comment
+fn greet(name) do
+    println("hello, " + name + "!")
+end
 
-    if a == 100 do
-        print("poggers")
+greet(facts["name"])
+
+for n in nums do
+    if n % 2 == 0 do
+        println(n.to_str() + " is even")
+    else do
+        println(n.to_str() + " is odd")
     end
-
-    print(a)
 end
-
-main()
 ```
 
-# Language Reference
+## Language at a Glance
 
-## Syntax
+- **Values & Prototypes**  
+  `type()`, `type_of()`, `type_check()` on any value; conversions via `to_*()` helpers.
 
-Queitite has a very simple and straightforward syntax.
+- **Strings**  
+  Indexing and slicing; `len()`, `repeat(n)`, and terminal color/style helpers.
 
-### Expressions
+- **Lists**  
+  Dynamic arrays with `len()`, `push()`, `pop()`, `insert(i, v)`, `remove(i)`, `first()`, `last()`, `contains(v)`.
 
-Expressions in queitite are similar to any C-style language. Queitite supports all of the standard arithmetic and boolean operators along with less common ones such as "**" (power) and "??" (nullish coalescing). It also supports logical OR and logical AND (as keywords, "or" and "and").
+- **Dicts**  
+  Hash maps keyed by `Null/Bool/Num/Str`; `len()`, `contains(k)`, `insert(k, v)`, `remove(k)`, `get(k)`, `keys()`, `values()`.
 
-```rb
-# basic arithmetic
-5 + 5 * (2 - 3) / 10
+- **Control Flow**  
+  `if/else`, `while`, `for value, index in iterable`, `match`, ternary `cond ? a : b`, ranges `a..b` and `a..=b` with optional `step`, slicing with ranges.
 
-# power operator
-2**3
+- **Errors**  
+  `try/catch/ensure` and `throw`; internal error types include `TypeErr`, `NameErr`, `ArityErr`, `ValueErr`, `NativeErr`, `IOErr`, `UserErr`.
 
-# boolean ops
-5 <= 10 or 10 == 10 and 3 > 5
+- **Objects & Functions**  
+  First-class functions; objects with optional `init()` constructor, static methods, and bound methods using `self`.
 
-# nullish coalescing
-null ?? "not null"
-
-var a
-a ?? 10
-```
-
-### Declarations and Assignment
-
-Queitite is a fully dynamically typed language. It supports variable and function declarations with the "var" and "fn" keywords. There are 5 value types in queitite along with a Null value:
-
-- Num: 64 bit floating point number format
-- Str: Dynamically allocated string format
-- Bool: Boolean type that can either be true or false
-- List: Dynamically allocated list/array that can hold any number of elements of any type
-- Callable: Functions are first class values as callables
-
-Variables already declared can be re-assigned to any type.
-
-```rb
-# variable declarations
-var a
-
-var b = true
-b = "amogus"
-
-var n = 10
-var pi = 3.14
-
-# function declarations
-fn square(n) do
-    return n*n
-end
-
-print(square(10))
-```
-
-# Implementation
-
-The queitite interpreter is a 3 stage interpreter with a Lexer that tokenizes the source code, a Parser that parses the tokens into an AST (Abstract Syntax Tree) and an Evaluator that walks the AST and executes it.
-
-## Lexer
-
-The lexer is implemented as a simple tokenizer.
-
-Run the interpreter with the `--dump-tokens` flag to see the token output of a source file without executing it.
-
-For more information, see the README.md file inside src/lexer.
-
-## Parser
-
-The parser is implemented as a recursive descent parser.
-
-Run the interpreter with the `--dump-ast` flag to see the AST output of a source file without executing it.
-
-For more information, see the README.md file inside src/parser.
-
-## Evaluator
-
-The evaluator is implemented as a tree-walk interpreter.
-
-For more information, see the README.md file inside src/evaluator.
+## Repository Layout
+- `src/lexer` - tokenizer
+- `src/parser` - recursive descent parser producing AST
+- `src/evaluator` - tree-walk interpreter and stdlib natives
+- `REFERENCE.md` - full language reference

@@ -27,7 +27,7 @@ use crate::{
         object::{Instance, Method, Object},
         prototype::{BoundMethod, ValuePrototypes},
         runtime_err::{ErrKind, EvalResult, RuntimeErr, RuntimeEvent},
-        value::{Callable, Value},
+        value::{Callable, Value, ValueKey},
     },
     lexer::token::KeywordKind,
     parser::{
@@ -462,6 +462,7 @@ impl<'a> Evaluator<'a> {
             ExprKind::Unary { .. } => self.eval_expr_unary(expr),
             ExprKind::Literal(_) => self.eval_expr_literal(expr),
             ExprKind::List(_) => self.eval_expr_list(expr),
+            ExprKind::Dict(_) => self.eval_expr_dict(expr),
             ExprKind::Range { .. } => self.eval_expr_range(expr),
             ExprKind::Index { .. } => self.eval_expr_index(expr),
             ExprKind::IndexSet { .. } => self.eval_expr_index_set(expr),
@@ -569,6 +570,27 @@ impl<'a> Evaluator<'a> {
         unreachable!("Non-list passed to Evaluator::eval_expr_list");
     }
 
+    fn eval_expr_dict(&mut self, expr: &Expr) -> EvalResult<Value> {
+        if let ExprKind::Dict(dict) = &expr.kind {
+            let mut map: HashMap<ValueKey, Value> = HashMap::new();
+
+            for (key, value) in dict {
+                let key_val = match ValueKey::try_from(&self.eval_expr(key)?) {
+                    Ok(val) => Ok(val),
+                    Err(_) => Err(RuntimeEvent::error(
+                        ErrKind::Type,
+                        "only Null, Bool, Num or Str values can be Dict keys".into(),
+                        expr.cursor,
+                    )),
+                }?;
+                map.insert(key_val, self.eval_expr(value)?);
+            }
+
+            return Ok(Value::Dict(Rc::new(RefCell::new(map))));
+        }
+        unreachable!("Non-dict passed to Evaluator::eval_expr_dict");
+    }
+
     fn eval_expr_range(&mut self, expr: &Expr) -> EvalResult<Value> {
         if let ExprKind::Range {
             start,
@@ -579,7 +601,7 @@ impl<'a> Evaluator<'a> {
         {
             let mut values: Vec<Value> = vec![];
 
-            let mut nstart: f64 = 0.0;
+            let nstart: f64;
             let val = self.eval_expr(start)?;
             if let Value::Num(n) = val {
                 nstart = n.0;
@@ -591,7 +613,7 @@ impl<'a> Evaluator<'a> {
                 ));
             }
 
-            let mut nend: f64 = 0.0;
+            let nend: f64;
             let val = self.eval_expr(end)?;
             if let Value::Num(n) = val {
                 nend = n.0;
@@ -641,118 +663,172 @@ impl<'a> Evaluator<'a> {
             let base_val = self.eval_expr(obj)?;
             let index_val = self.eval_expr(index)?;
 
-            match index_val {
-                Value::Num(n) => {
-                    let idx = n.0 as usize;
-                    return match base_val {
-                        Value::List(rc_items) => {
-                            let items = rc_items.borrow();
-                            if idx >= items.len() {
+            return match base_val {
+                Value::Dict(map) => match index_val {
+                    Value::List(idx_list) => {
+                        let keys: Vec<ValueKey> = idx_list
+                            .borrow()
+                            .iter()
+                            .map(|v| {
+                                ValueKey::try_from(v).map_err(|_| {
+                                    RuntimeEvent::error(
+                                        ErrKind::Type,
+                                        "dict index list must be Null/Bool/Num/Str".into(),
+                                        index.cursor,
+                                    )
+                                })
+                            })
+                            .collect::<Result<_, _>>()?;
+                        let map_ref = map.borrow();
+                        let mut out = Vec::with_capacity(keys.len());
+                        for key in keys.iter() {
+                            if let Some(v) = map_ref.get(key) {
+                                out.push(v.clone());
+                            } else {
+                                return Err(RuntimeEvent::error(
+                                    ErrKind::Value,
+                                    "dict index not found".into(),
+                                    expr.cursor,
+                                ));
+                            }
+                        }
+                        Ok(Value::List(Rc::new(RefCell::new(out))))
+                    }
+                    _ => {
+                        let key = ValueKey::try_from(&index_val).map_err(|_| {
+                            RuntimeEvent::error(
+                                ErrKind::Type,
+                                "dict index must be Null, Bool, Num or Str".into(),
+                                index.cursor,
+                            )
+                        })?;
+                        if let Some(v) = map.borrow().get(&key) {
+                            Ok(v.clone())
+                        } else {
+                            Err(RuntimeEvent::error(
+                                ErrKind::Value,
+                                "dict index not found".into(),
+                                expr.cursor,
+                            ))
+                        }
+                    }
+                },
+                Value::List(rc_items) => match index_val {
+                    Value::Num(n) => {
+                        let idx = n.0 as usize;
+                        let items = rc_items.borrow();
+                        if idx >= items.len() {
+                            return Err(RuntimeEvent::error(
+                                ErrKind::Value,
+                                format!("list index {} out of bounds (len = {})", idx, items.len()),
+                                expr.cursor,
+                            ));
+                        }
+                        Ok(items[idx].clone())
+                    }
+                    Value::List(idx_list) => {
+                        let indices: Vec<usize> = idx_list
+                            .borrow()
+                            .iter()
+                            .map(|v| {
+                                if let Value::Num(n) = v {
+                                    Ok(n.0 as usize)
+                                } else {
+                                    Err(RuntimeEvent::error(
+                                        ErrKind::Type,
+                                        "index list must contain only Num values".into(),
+                                        index.cursor,
+                                    ))
+                                }
+                            })
+                            .collect::<Result<_, _>>()?;
+                        let items = rc_items.borrow();
+                        let mut out = Vec::with_capacity(indices.len());
+                        for i in indices.iter() {
+                            if *i >= items.len() {
                                 return Err(RuntimeEvent::error(
                                     ErrKind::Value,
                                     format!(
                                         "list index {} out of bounds (len = {})",
-                                        idx,
+                                        i,
                                         items.len()
                                     ),
                                     expr.cursor,
                                 ));
                             }
-                            Ok(items[idx].clone())
+                            out.push(items[*i].clone());
                         }
-                        Value::Str(s) => {
-                            let chars: Vec<char> = s.borrow().chars().collect();
-                            if idx >= chars.len() {
+                        Ok(Value::List(Rc::new(RefCell::new(out))))
+                    }
+                    _ => Err(RuntimeEvent::error(
+                        ErrKind::Type,
+                        "list index must be a Num or List of Nums".into(),
+                        index.cursor,
+                    )),
+                },
+                Value::Str(s) => match index_val {
+                    Value::Num(n) => {
+                        let idx = n.0 as usize;
+                        let chars: Vec<char> = s.borrow().chars().collect();
+                        if idx >= chars.len() {
+                            return Err(RuntimeEvent::error(
+                                ErrKind::Value,
+                                format!(
+                                    "string index {} out of bounds (len = {})",
+                                    idx,
+                                    chars.len()
+                                ),
+                                expr.cursor,
+                            ));
+                        }
+                        Ok(Value::Str(Rc::new(RefCell::new(chars[idx].to_string()))))
+                    }
+                    Value::List(idx_list) => {
+                        let indices: Vec<usize> = idx_list
+                            .borrow()
+                            .iter()
+                            .map(|v| {
+                                if let Value::Num(n) = v {
+                                    Ok(n.0 as usize)
+                                } else {
+                                    Err(RuntimeEvent::error(
+                                        ErrKind::Type,
+                                        "string index list must contain only Num values".into(),
+                                        index.cursor,
+                                    ))
+                                }
+                            })
+                            .collect::<Result<_, _>>()?;
+                        let chars: Vec<char> = s.borrow().chars().collect();
+                        let mut out = String::new();
+                        for i in indices.iter() {
+                            if *i >= chars.len() {
                                 return Err(RuntimeEvent::error(
                                     ErrKind::Value,
                                     format!(
                                         "string index {} out of bounds (len = {})",
-                                        idx,
+                                        i,
                                         chars.len()
                                     ),
                                     expr.cursor,
                                 ));
                             }
-                            Ok(Value::Str(Rc::new(RefCell::new(chars[idx].to_string()))))
+                            out.push(chars[*i]);
                         }
-                        _ => Err(RuntimeEvent::error(
-                            ErrKind::Type,
-                            "value is not indexable".into(),
-                            expr.cursor,
-                        )),
-                    };
-                }
-                Value::List(idx_list) => {
-                    let indices: Vec<usize> = idx_list
-                        .borrow()
-                        .iter()
-                        .map(|v| {
-                            if let Value::Num(n) = v {
-                                Ok(n.0 as usize)
-                            } else {
-                                Err(RuntimeEvent::error(
-                                    ErrKind::Type,
-                                    "index list must contain only Num values".into(),
-                                    index.cursor,
-                                ))
-                            }
-                        })
-                        .collect::<Result<_, _>>()?;
-
-                    return match base_val {
-                        Value::List(rc_items) => {
-                            let items = rc_items.borrow();
-                            let mut out = Vec::with_capacity(indices.len());
-                            for i in indices.iter() {
-                                if *i >= items.len() {
-                                    return Err(RuntimeEvent::error(
-                                        ErrKind::Value,
-                                        format!(
-                                            "list index {} out of bounds (len = {})",
-                                            i,
-                                            items.len()
-                                        ),
-                                        expr.cursor,
-                                    ));
-                                }
-                                out.push(items[*i].clone());
-                            }
-                            Ok(Value::List(Rc::new(RefCell::new(out))))
-                        }
-                        Value::Str(s) => {
-                            let chars: Vec<char> = s.borrow().chars().collect();
-                            let mut out = String::new();
-                            for i in indices.iter() {
-                                if *i >= chars.len() {
-                                    return Err(RuntimeEvent::error(
-                                        ErrKind::Value,
-                                        format!(
-                                            "string index {} out of bounds (len = {})",
-                                            i,
-                                            chars.len()
-                                        ),
-                                        expr.cursor,
-                                    ));
-                                }
-                                out.push(chars[*i]);
-                            }
-                            Ok(Value::Str(Rc::new(RefCell::new(out))))
-                        }
-                        _ => Err(RuntimeEvent::error(
-                            ErrKind::Type,
-                            "value is not indexable".into(),
-                            expr.cursor,
-                        )),
-                    };
-                }
-                _ => {
-                    return Err(RuntimeEvent::error(
+                        Ok(Value::Str(Rc::new(RefCell::new(out))))
+                    }
+                    _ => Err(RuntimeEvent::error(
                         ErrKind::Type,
-                        "list index must be a Num or List of Nums".into(),
+                        "string index must be a Num or List of Nums".into(),
                         index.cursor,
-                    ));
-                }
-            }
+                    )),
+                },
+                _ => Err(RuntimeEvent::error(
+                    ErrKind::Type,
+                    "value is not indexable".into(),
+                    expr.cursor,
+                )),
+            };
         }
         unreachable!("Non-index passed to eval_expr_index");
     }
@@ -763,7 +839,8 @@ impl<'a> Evaluator<'a> {
         } = &expr.kind
         {
             let base_val = self.eval_expr(obj)?;
-            // Ranges: treat as slice replacement without evaluating index expression
+
+            // slice assignment for range index
             if let ExprKind::Range {
                 start,
                 end,
@@ -778,13 +855,14 @@ impl<'a> Evaluator<'a> {
                         index.cursor,
                     ));
                 }
-
-                let start_val = self.eval_expr(start)?;
-                let end_val = self.eval_expr(end)?;
-                let start_idx =
-                    start_val.check_num(index.cursor, Some("range start".into()))? as usize;
-                let mut end_idx =
-                    end_val.check_num(index.cursor, Some("range end".into()))? as usize;
+                let start_idx = self
+                    .eval_expr(start)?
+                    .check_num(index.cursor, Some("range start".into()))?
+                    as usize;
+                let mut end_idx = self
+                    .eval_expr(end)?
+                    .check_num(index.cursor, Some("range end".into()))?
+                    as usize;
                 if *inclusive {
                     end_idx = end_idx.saturating_add(1);
                 }
@@ -832,7 +910,6 @@ impl<'a> Evaluator<'a> {
                                 expr.cursor,
                             ));
                         };
-
                         let mut new_buf = buf.clone();
                         new_buf.splice(start_idx..end_idx, repl_str.chars().collect::<Vec<char>>());
                         s.borrow_mut().clear();
@@ -847,10 +924,60 @@ impl<'a> Evaluator<'a> {
                 };
             }
 
-            // Non-range: evaluate index normally (Num or List of Nums)
+            // regular index assignment
             let index_val = self.eval_expr(index)?;
-
             return match base_val {
+                Value::Dict(map) => match index_val {
+                    Value::List(idx_list) => {
+                        let keys: Vec<ValueKey> = idx_list
+                            .borrow()
+                            .iter()
+                            .map(|v| {
+                                ValueKey::try_from(v).map_err(|_| {
+                                    RuntimeEvent::error(
+                                        ErrKind::Type,
+                                        "dict index list must be Null/Bool/Num/Str".into(),
+                                        index.cursor,
+                                    )
+                                })
+                            })
+                            .collect::<Result<_, _>>()?;
+                        let map_ref = map.borrow();
+                        let mut out = Vec::with_capacity(keys.len());
+                        for key in keys.iter() {
+                            if let Some(v) = map_ref.get(key) {
+                                out.push(v.clone());
+                            } else {
+                                return Err(RuntimeEvent::error(
+                                    ErrKind::Value,
+                                    "dict index not found".into(),
+                                    expr.cursor,
+                                ));
+                            }
+                        }
+                        Ok(Value::List(Rc::new(RefCell::new(out))))
+                    }
+                    _ => {
+                        let key = ValueKey::try_from(&index_val).map_err(|_| {
+                            RuntimeEvent::error(
+                                ErrKind::Type,
+                                "dict index must be Null, Bool, Num or Str".into(),
+                                index.cursor,
+                            )
+                        })?;
+                        let set_val = self.eval_expr(val)?;
+                        if let Some(v) = map.borrow_mut().get_mut(&key) {
+                            *v = set_val.clone();
+                            Ok(set_val)
+                        } else {
+                            Err(RuntimeEvent::error(
+                                ErrKind::Value,
+                                "dict index not found".into(),
+                                expr.cursor,
+                            ))
+                        }
+                    }
+                },
                 Value::List(items) => match index_val {
                     Value::Num(n) => {
                         let idx = n.0 as usize;
@@ -885,7 +1012,6 @@ impl<'a> Evaluator<'a> {
                                 }
                             })
                             .collect::<Result<_, _>>()?;
-
                         let set_val = self.eval_expr(val)?;
                         for i in indices.iter() {
                             if *i >= items.borrow().len() {
@@ -909,147 +1035,83 @@ impl<'a> Evaluator<'a> {
                         index.cursor,
                     )),
                 },
-                Value::Str(s) => {
-                    // Handle slice replacement when index is a range expression.
-                    if let ExprKind::Range {
-                        start,
-                        end,
-                        inclusive,
-                        ..
-                    } = &index.kind
-                    {
-                        let start_val = self.eval_expr(start)?;
-                        let end_val = self.eval_expr(end)?;
-                        let start_idx = if let Value::Num(n) = start_val {
-                            n.0 as usize
-                        } else {
-                            return Err(RuntimeEvent::error(
-                                ErrKind::Type,
-                                "string range start must be a Num".into(),
-                                index.cursor,
-                            ));
-                        };
-                        let mut end_idx = if let Value::Num(n) = end_val {
-                            n.0 as usize
-                        } else {
-                            return Err(RuntimeEvent::error(
-                                ErrKind::Type,
-                                "string range end must be a Num".into(),
-                                index.cursor,
-                            ));
-                        };
-                        if *inclusive {
-                            end_idx = end_idx.saturating_add(1);
-                        }
+                Value::Str(s) => match index_val {
+                    Value::Num(n) => {
+                        let idx = n.0 as usize;
                         let len = s.borrow().chars().count();
-                        if start_idx > end_idx || end_idx > len {
+                        if idx >= len {
                             return Err(RuntimeEvent::error(
                                 ErrKind::Value,
-                                "invalid string range".into(),
+                                format!("string index {} out of bounds (len = {})", idx, len),
                                 expr.cursor,
                             ));
                         }
                         let set_val = self.eval_expr(val)?;
                         if let Value::Str(set_str) = set_val.clone() {
                             s.borrow_mut()
-                                .replace_range(start_idx..end_idx, set_str.borrow().as_str());
-                            return Ok(set_val);
+                                .replace_range(idx..=idx, set_str.borrow().as_str());
+                            Ok(set_val)
                         } else {
-                            return Err(RuntimeEvent::error(
-                                ErrKind::Type,
-                                "can't set index of Str to non-Str".into(),
-                                expr.cursor,
-                            ));
-                        }
-                    }
-
-                    match index_val {
-                        Value::Num(n) => {
-                            let idx = n.0 as usize;
-                            let chars: Vec<char> = s.borrow().chars().collect();
-                            if idx >= chars.len() {
-                                return Err(RuntimeEvent::error(
-                                    ErrKind::Value,
-                                    format!(
-                                        "string index {} out of bounds (len = {})",
-                                        idx,
-                                        chars.len()
-                                    ),
-                                    expr.cursor,
-                                ));
-                            }
-
-                            let set_val = self.eval_expr(val)?;
-                            if let Value::Str(set_str) = set_val.clone() {
-                                s.borrow_mut()
-                                    .replace_range(idx..=idx, set_str.borrow().as_str());
-                                return Ok(set_val);
-                            }
-
                             Err(RuntimeEvent::error(
                                 ErrKind::Type,
                                 "can't set index of Str to non-Str".into(),
                                 expr.cursor,
                             ))
                         }
-                        Value::List(idx_list) => {
-                            let indices: Vec<usize> = idx_list
-                                .borrow()
-                                .iter()
-                                .map(|v| {
-                                    if let Value::Num(n) = v {
-                                        Ok(n.0 as usize)
-                                    } else {
-                                        Err(RuntimeEvent::error(
-                                            ErrKind::Type,
-                                            "index list must contain only Num values".into(),
-                                            index.cursor,
-                                        ))
-                                    }
-                                })
-                                .collect::<Result<_, _>>()?;
-
-                            let set_val = self.eval_expr(val)?;
-                            let set_char = match set_val.clone() {
-                                Value::Str(sv) => sv.borrow().clone(),
-                                _ => {
-                                    return Err(RuntimeEvent::error(
-                                        ErrKind::Type,
-                                        "can't set index of Str to non-Str".into(),
-                                        expr.cursor,
-                                    ));
-                                }
-                            };
-
-                            let mut buf: Vec<char> = s.borrow().chars().collect();
-                            for i in indices.iter() {
-                                if *i >= buf.len() {
-                                    return Err(RuntimeEvent::error(
-                                        ErrKind::Value,
-                                        format!(
-                                            "string index {} out of bounds (len = {})",
-                                            i,
-                                            buf.len()
-                                        ),
-                                        expr.cursor,
-                                    ));
-                                }
-                                // if replacement string is empty, skip; else take first char
-                                if let Some(ch) = set_char.chars().next() {
-                                    buf[*i] = ch;
-                                }
-                            }
-                            s.borrow_mut().clear();
-                            s.borrow_mut().push_str(&buf.iter().collect::<String>());
-                            Ok(set_val)
-                        }
-                        _ => Err(RuntimeEvent::error(
-                            ErrKind::Type,
-                            "string index must be a Num or List of Nums".into(),
-                            index.cursor,
-                        )),
                     }
-                }
+                    Value::List(idx_list) => {
+                        let indices: Vec<usize> = idx_list
+                            .borrow()
+                            .iter()
+                            .map(|v| {
+                                if let Value::Num(n) = v {
+                                    Ok(n.0 as usize)
+                                } else {
+                                    Err(RuntimeEvent::error(
+                                        ErrKind::Type,
+                                        "string index list must contain only Num values".into(),
+                                        index.cursor,
+                                    ))
+                                }
+                            })
+                            .collect::<Result<_, _>>()?;
+                        let set_val = self.eval_expr(val)?;
+                        let repl = if let Value::Str(sv) = set_val.clone() {
+                            sv.borrow().clone()
+                        } else {
+                            return Err(RuntimeEvent::error(
+                                ErrKind::Type,
+                                "can't set index of Str to non-Str".into(),
+                                expr.cursor,
+                            ));
+                        };
+                        let mut buf: Vec<char> = s.borrow().chars().collect();
+                        for i in indices.iter() {
+                            if *i >= buf.len() {
+                                return Err(RuntimeEvent::error(
+                                    ErrKind::Value,
+                                    format!(
+                                        "string index {} out of bounds (len = {})",
+                                        i,
+                                        buf.len()
+                                    ),
+                                    expr.cursor,
+                                ));
+                            }
+                            if let Some(ch) = repl.chars().next() {
+                                buf[*i] = ch;
+                            }
+                        }
+                        s.borrow_mut().clear();
+                        s.borrow_mut().push_str(&buf.iter().collect::<String>());
+                        Ok(set_val)
+                    }
+                    _ => Err(RuntimeEvent::error(
+                        ErrKind::Type,
+                        "string index must be a Num or List of Nums".into(),
+                        index.cursor,
+                    )),
+                },
                 _ => Err(RuntimeEvent::error(
                     ErrKind::Type,
                     "value is not indexable".into(),
@@ -1080,7 +1142,6 @@ impl<'a> Evaluator<'a> {
                         expr.cursor,
                     ));
                 }
-                // handle panics via catch_unwind
                 let call_res =
                     catch_unwind(AssertUnwindSafe(|| c.call(self, args_values, expr.cursor)));
                 let res = match call_res {
@@ -1111,7 +1172,6 @@ impl<'a> Evaluator<'a> {
                         expr.cursor,
                     ));
                 }
-                // handle panics via catch_unwind
                 let call_res = catch_unwind(AssertUnwindSafe(|| {
                     obj.call(self, args_values, expr.cursor)
                 }));
