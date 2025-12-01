@@ -269,7 +269,7 @@ native_fn_with_data!(
     "set_style",
     3,
     TextInputData,
-    |_evaluator, args, cursor, data| {
+    |_evaluator, args, _cursor, data| {
         let style = TuiStyle::from_args(Some(&args[0]), Some(&args[1]), Some(&args[2]));
 
         data.borrow_mut().style = style;

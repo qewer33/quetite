@@ -42,31 +42,35 @@ pub struct Evaluator<'a> {
     pub src: &'a Src,
     ast: Vec<Stmt>,
     globals: EnvPtr,
-    env: EnvPtr,
+    pub env: EnvPtr,
     prototypes: ValuePrototypes,
-    loader: LoaderPtr,
+    pub loader: LoaderPtr,
 }
 
 impl<'a> Evaluator<'a> {
     pub fn new(src: &'a Src) -> Self {
         let globals = Natives::get_natives();
 
-        let mut this = Self {
-            src,
-            ast: src.ast.clone().expect("expected ast"),
-            globals,
-            env: Env::new(),
-            prototypes: ValuePrototypes::new(),
-            loader: Rc::new(RefCell::new(Loader::default())),
-        };
-        this.env = this.globals.clone();
-        this
+        Self::with_state(src, globals, Rc::new(RefCell::new(Loader::default())))
     }
 
     pub fn with_loader(src: &'a Src, loader: LoaderPtr) -> Self {
         let mut evaluator = Evaluator::new(src);
         evaluator.loader = loader;
         evaluator
+    }
+
+    pub fn with_state(src: &'a Src, globals: EnvPtr, loader: LoaderPtr) -> Self {
+        let ast = src.ast.clone().expect("expected ast");
+
+        Self {
+            src,
+            ast,
+            env: globals.clone(),
+            globals,
+            prototypes: ValuePrototypes::new(),
+            loader,
+        }
     }
 
     pub fn eval(&mut self) -> EvalResult<()> {
@@ -89,6 +93,42 @@ impl<'a> Evaluator<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Evaluate and return the last expression value (used by the REPL).
+    pub fn eval_with_result(&mut self) -> EvalResult<Option<Value>> {
+        let mut last_expr: Option<Value> = None;
+
+        for stmt in self.ast.clone().iter() {
+            let res = match &stmt.kind {
+                StmtKind::Expr(expr) => self.eval_expr(expr).map(|v| {
+                    if let ExprKind::Call { .. } = expr.kind {
+                        if v != Value::Null {
+                            last_expr = Some(v);
+                        }
+                    } else {
+                        last_expr = Some(v);
+                    }
+                }),
+                _ => self.eval_stmt(stmt),
+            };
+
+            if let Err(err) = res {
+                if let RuntimeEvent::Err(RuntimeErr {
+                    kind, msg, cursor, ..
+                }) = &err
+                {
+                    Reporter::error_at(msg, kind.to_string(), self.src, *cursor);
+                }
+                if let RuntimeEvent::UserErr { val, cursor } = &err {
+                    let msg = format!("user error: {}", val);
+                    Reporter::error_at(msg.as_str(), "UserErr".into(), self.src, *cursor);
+                }
+                return Err(err);
+            }
+        }
+
+        Ok(last_expr)
     }
 
     // Statement functions

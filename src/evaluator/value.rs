@@ -40,7 +40,7 @@ impl PartialEq for Value {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Null => write!(f, "null"),
+            Value::Null => write!(f, "Null"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Num(n) => write!(f, "{}", n.0),
             Value::Str(s) => write!(f, "{}", s.borrow()),

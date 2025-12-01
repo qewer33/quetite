@@ -43,6 +43,16 @@ impl Lexer {
         }
     }
 
+    pub fn with_cursor(src: String, cursor: Cursor) -> Self {
+        Self {
+            src: src.chars().collect(),
+            curr: 0,
+            start: 0,
+            cursor,
+            out: LexerOutput::default(),
+        }
+    }
+
     pub fn tokenize(&mut self) -> LexerOutput {
         let mut tokens: Vec<Token> = Vec::new();
 
@@ -417,21 +427,6 @@ impl Lexer {
         }
 
         false
-    }
-
-    fn consume_until(&mut self, c: char) -> String {
-        let mut out = String::new();
-
-        loop {
-            out.push(self.current());
-
-            if self.peek() == c {
-                break;
-            }
-            self.next();
-        }
-
-        out
     }
 
     fn consume_string(&mut self) -> String {

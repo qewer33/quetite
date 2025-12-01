@@ -63,7 +63,7 @@ impl Callable for Function {
         &self,
         evaluator: &mut Evaluator,
         args: Vec<Value>,
-        cursor: Cursor,
+        _cursor: Cursor,
     ) -> EvalResult<Value> {
         if let StmtKind::Fn { params, body, .. } = &self.declr.kind {
             let env = Env::enclosed(self.closure.clone());

@@ -2,8 +2,6 @@ pub mod expr;
 pub mod parse_err;
 pub mod stmt;
 
-use std::collections::HashMap;
-
 use ordered_float::OrderedFloat;
 use strum::IntoDiscriminant;
 

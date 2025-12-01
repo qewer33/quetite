@@ -14,14 +14,15 @@ println("Hello Quetite!")
 - [x] Fully dynamic type system (with types like `Bool`, `Num`, `Str` etc...)
 - [x] First class functions (`Callable` type) and objects with constructors, static and bound methods (`Obj` type)
 - [x] Fully dynamic lists and dictionaries (`List` and `Dict` types)
-- [x] Prototype methods on primitives (`Str.len()`, `List.push()`, `Dict.keys()`, etc.)
+- [x] Internal prototype methods on primitives (`Str.len()`, `List.push()`, `Dict.keys()`, etc.)
 - [x] Familiar control flow: `if/else`, `while`, `for` over iterables, `match`
+- [x] Friendly and easy to understand errors!
 - [x] Runtime error handling system via `throw` and `try/catch/ensure`
-- [x] Misc scripting features such as: ranges (`..` and `..=` operators) and slices for lists/strings, nullish coalescing (`a ?? b`) and power (`**`) operators
+- [x] Misc scripting features such as: ranges (`..` and `..=` operators), list/string slicing (`str[a..b]`), nullish coalescing (`a ?? b`), power (`a**b`) and ternary (`cond ? a : b`) operators
 - [x] Truthiness rules (`false`, `Null`, `0` are falsy; everything else is truthy)
 - [x] Powerful and extensive stdlib (`Sys`, `Math`, `Rand`, `Term` etc.)
 - [x] Ability to include other scripts inside a script via `use`
-- [ ] REPL (coming soon!)
+- [x] Fully interactive REPL with interactive `help` command
 - [ ] Ratatui bindings for the stdlib to create fun TUI apps! (half implemented, full implementation coming soon!)
 - [ ] Processing/p5.js like simple creative coding and graphics API for the stdlib to create fun games and creative programs! (half implemented, full implementation coming soon!)
 

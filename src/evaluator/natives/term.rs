@@ -168,6 +168,7 @@ native_fn!(
 );
 
 // Key input data structure
+#[allow(dead_code)]
 struct KeyInputData {
     key: String,
     ctrl: bool,

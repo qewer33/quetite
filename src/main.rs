@@ -5,6 +5,7 @@ use crate::{
     evaluator::{Evaluator, resolver::Resolver},
     lexer::Lexer,
     parser::Parser,
+    repl::Repl,
     reporter::Reporter,
     src::Src,
 };
@@ -12,6 +13,7 @@ use crate::{
 pub mod evaluator;
 pub mod lexer;
 pub mod parser;
+pub mod repl;
 pub mod reporter;
 pub mod src;
 
@@ -23,8 +25,8 @@ pub mod src;
     author = "qewer33"
 )]
 struct Args {
-    /// Program file to run
-    file: PathBuf,
+    /// Program file to run. If omitted, starts the interactive REPL.
+    file: Option<PathBuf>,
 
     /// Dump token stream and exit
     #[arg(long, conflicts_with_all = ["dump_ast", "verbose"])]
@@ -42,8 +44,17 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    // Run REPL if no file provided
+    if args.file.is_none() {
+        let mut repl = Repl::new();
+        repl.run();
+        return;
+    }
+
+    let file = args.file.expect("expected file");
+
     // 1) Read source
-    let mut src = Src::new(args.file);
+    let mut src = Src::new(file);
 
     // 2) Lex
     let mut lexer = Lexer::new(src.text.clone());

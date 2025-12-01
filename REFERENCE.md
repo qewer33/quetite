@@ -18,6 +18,12 @@ quetite hello.qte
 
 You just wrote and ran your first Quetite script, congrats! :D
 
+You can also explore Quetite with the interactive Quetite shell (REPL). Start an interactive shell session by invoking the Quetite interpreter with no arguments:
+
+```sh
+quetite
+```
+
 ## Lexical Structure
 
 ### Comments
@@ -198,10 +204,10 @@ Arithmetic expressions in Quetite are very similar with other mainstream scripti
 |----------------|--------------|-----------|
 | Addition       | +            | a + b     |
 | Subtraction    | -            | a - b     |
-| Multiplication | *            | a * b     |
+| Multiplication | \*           | a \* b    |
 | Division       | /            | a / b     |
 | Modulo         | %            | a % b     |
-| Power          | **           | a**b      |
+| Power          | \*\*         | a\*\*b    |
 
 The Num type supports every kind of arithmetic operation while Str supports only addition (string concatenation). Other types don't support any arithmetic operations.
 
@@ -226,7 +232,7 @@ The nullish coalescing (`a ?? b`) operator is a special operator that returns `b
 
 The equal operation is supported by all value types but only works if `a` and `b` are the same type. The logical and/or operators are supported on every type via the truthiness table. Comparison operators are only supported on Num values. All the boolean operations (excluding nullish coalescing) evaluate to a Bool value.
 
-### Assignment
+#### Assignment
 
 An assignment epression is used to re-assign the value of an already defined (see Variable Declaration in Statements). Quetite has 5 different assignment operations:
 

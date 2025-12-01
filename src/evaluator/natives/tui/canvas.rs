@@ -313,7 +313,7 @@ native_fn_with_data!(
     "points",
     2,
     CanvasData,
-    |_evaluator, args, cursor, data| {
+    |_evaluator, args, _cursor, data| {
         let points = match &args[0] {
             Value::List(list) => {
                 let borrowed = list.borrow();

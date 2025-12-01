@@ -55,18 +55,18 @@ impl Reporter {
         if line > 0 {
             println!(
                 "{} {} {}",
-                (line - 1).to_string().blue(),
+                line.to_string().blue(),
                 "|".blue(),
                 src.lines[line - 1]
             );
         }
         println!(
             "{} {} {}",
-            line.to_string().blue(),
+            (line + 1).to_string().blue(),
             "|".blue(),
             src.lines[line]
         );
-        print!(" {}{}", " ".repeat(cursor.col), "^ here: ".yellow());
+        print!("   {}{}", " ".repeat(cursor.col), "^ here: ".yellow());
         if let Some(estr) = expected {
             print!("expected '{}'", estr);
             if let Some(fstr) = found {
@@ -79,7 +79,7 @@ impl Reporter {
         if line < src.lines.len() - 1 {
             println!(
                 "{} {} {}",
-                (line + 1).to_string().blue(),
+                (line + 2).to_string().blue(),
                 "|".blue(),
                 src.lines[line + 1]
             );

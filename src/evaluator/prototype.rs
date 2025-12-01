@@ -319,7 +319,7 @@ impl ValuePrototypes {
             StrParseNum,
             "parse_num",
             0,
-            |_evaluator, _cursor, args, recv| {
+            |_evaluator, _cursor, _args, recv| {
                 if let Value::Str(str) = recv {
                     if let Ok(num) = str.borrow().parse::<f64>() {
                         return Ok(Value::Num(OrderedFloat(num)));
