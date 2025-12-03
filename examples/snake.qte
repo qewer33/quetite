@@ -49,7 +49,7 @@ obj Snake do
         if new_y < 1 do
             new_y = height
         else if new_y > height do
-            new_y = 0
+            new_y = 1
         end
 
         # move by pushing head and removing tail
@@ -118,22 +118,25 @@ obj Game do
         # game logic timer
         var tprev = Sys.clock()
 
+        # last pressed key
+        var key
+
         while true do
             # read input
             var input = Term.get_input()
             if input do
-                var key = input.key()
-
+                key = input.key()
                 if key == "Esc" break
-
-                if ["Up", "Down", "Left", "Right"].contains(key) do
-                    self.snake.set_pos(key)
-                end
             end
 
             # game logic
             if Sys.clock()-tprev > 250/self.game_speed do
                 tprev = Sys.clock()
+
+                # set snake direction
+                if key and ["Up", "Down", "Left", "Right"].contains(key) do
+                    self.snake.set_pos(key)
+                end
 
                 # check game end (snake collision)
                 if self.snake.check_collision() break
