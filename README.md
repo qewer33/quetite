@@ -45,36 +45,45 @@ Run the interactive REPL:
 cargo run
 ```
 
-Use the `help` command inside the REPL to interactively explore "The Quetite Language Reference" and "API Reference" documentations. Also check out the examples folder to see other examples!
+Use the `help` command inside the REPL to interactively explore ["The Quetite Language Reference"](https://github.com/qewer33/quetite/blob/main/REFERENCE.md) and ["API Reference"](https://github.com/qewer33/quetite/blob/main/API.md) documentations. Also check out the [examples folder](https://github.com/qewer33/quetite/tree/main/examples) to see other examples!
 
-## Example
+## Example Rock-Paper-Scissors Game in Quetite
 
 ```rb
-# hello.qte
+println("Rock Paper Scissors in Quetite!")
 
-var who = "world"
-var nums = 0..=4
-var facts = {
-    "name": who,
-    "lucky": nums[3],
+var moves = ["rock", "paper", "scissors"]
+var beats = {
+    "rock": "scissors",
+    "paper": "rock",
+    "scissors": "paper"
 }
 
-fn greet(name) do
-    println("hello, " + name + "!")
-end
+while true do
+    print("\nMake your move: ")
+    var user = read()
 
-greet(facts["name"])
-
-for n in nums do
-    if n % 2 == 0 do
-        println(n.to_str() + " is even")
-    else do
-        println(n.to_str() + " is odd")
+    if user == "q" break
+    if !moves.contains(user) do
+        print("Invalid move! Valid moves are: ")
+        println(moves)
+        continue
     end
+
+    var computer = Rand.list(moves)
+
+    println("\nYour move: " + user)
+    println("Computer's move: " + computer)
+
+    if beats[computer] == user println("\nComputer wins!")
+    if beats[user] == computer println("\nYou win!")
+    if user == computer println("\nIt's a draw!")
 end
 ```
 
 ## Quetite at a Glance
+
+See ["The Quetite Language Reference"](https://github.com/qewer33/quetite/blob/main/REFERENCE.md) for a full list and detailed explanations of Quetite's features.
 
 - **Values & Prototypes**  
   `type()`, `type_of()`, `type_check()` on any value; conversions via `to_*()` helpers.
