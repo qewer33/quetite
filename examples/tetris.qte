@@ -1,0 +1,116 @@
+# this example implements a fully functional terminal tetris game
+
+use "tetris_pieces.qte"
+
+obj Pos do
+    init(x, y) do
+        self.x = x
+        self.y = y
+    end
+
+    equals(self, other) do
+        return self.x == other.x and self.y == other.y
+    end
+end
+
+obj Piece do
+    init(x, y, type) do
+        self.x = x
+        self.y = y
+
+        var types = ["I", "O", "T", "J", "L", "S", "Z"]
+        if !types.contains(type) throw "invalid piece type"
+        self.type = type
+
+        self.state = "normal"
+
+        self.moving = true
+    end
+
+    display(self) do
+        var buffer = pieces[self.type][self.state]
+        for y in 0..4 do
+            for x in 0..4 do
+                if buffer[y][x] == "#" Term.put(self.x + x, self.y + y, "█".color(pieces[self.type]["color"]))
+            end
+        end
+    end
+end
+
+obj Board do
+    init() do
+        self.tiles = []
+
+        for y in 0..20 do
+            var row = []
+            for x in 0..10 do
+                row += false
+            end
+            self.tiles += row
+        end
+    end
+
+    display(self) do
+        for y in 0..20 do
+            for x in 0..10 do
+                var tile = self.tiles[y][x]
+            end
+        end
+    end
+end
+
+obj Game do
+    init() do
+        self.game_speed = 1
+    end
+
+    run(self) do
+        # configure terminal
+        Term.raw_enable()
+        Term.cursor_hide()
+        Term.clear()
+
+        Term.put(0, 0, " ".repeat(Term.size()[0]).on_blue())
+        Term.put(0, 0, "Tetris".white().on_blue().bold())
+
+        # game logic timer
+        var tprev = Sys.clock()
+
+        # last pressed key
+        var key
+
+        while true do
+            # read input
+            var input = Term.get_input()
+            if input do
+                key = input.key()
+                if key == "Esc" break
+            end
+
+            # game logic
+            if Sys.clock()-tprev > 250/self.game_speed do
+                tprev = Sys.clock()
+
+                Piece(5, 10, "T").display()
+                Piece(2, 3, "I").display()
+                Piece(10, 3, "L").display()
+                Piece(20, 12, "O").display()
+            end
+
+            # delay to stabilize input
+            Sys.sleep(17)
+        end
+
+        # restore terminal
+        Term.cursor_show()
+        Term.raw_disable()
+
+        # print game over message
+        Term.clear()
+        println(" Game Over! ".red().reverse().blink())
+    end
+end
+
+# run game
+var game = Game()
+game.run()

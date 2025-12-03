@@ -401,6 +401,56 @@ impl ValuePrototypes {
         str_color_method!(proto, StrOnCyan, "on_cyan", on_cyan);
         str_color_method!(proto, StrOnWhite, "on_white", on_white);
 
+        // color(name) -> Str: apply a color/style by name
+        proto_method!(
+            proto,
+            StrColor,
+            "color",
+            1,
+            |_evaluator, args, cursor, recv| {
+                if let Value::Str(str_val) = recv {
+                    let name = args[1].check_str(cursor, Some("color name".into()))?;
+                    let c = name.borrow().to_lowercase();
+                    let styled = match c.as_str() {
+                        "black" => str_val.borrow().black().to_string(),
+                        "red" => str_val.borrow().red().to_string(),
+                        "green" => str_val.borrow().green().to_string(),
+                        "yellow" => str_val.borrow().yellow().to_string(),
+                        "blue" => str_val.borrow().blue().to_string(),
+                        "magenta" => str_val.borrow().magenta().to_string(),
+                        "cyan" => str_val.borrow().cyan().to_string(),
+                        "white" => str_val.borrow().white().to_string(),
+                        "bright_black" => str_val.borrow().bright_black().to_string(),
+                        "bright_red" => str_val.borrow().bright_red().to_string(),
+                        "bright_green" => str_val.borrow().bright_green().to_string(),
+                        "bright_yellow" => str_val.borrow().bright_yellow().to_string(),
+                        "bright_blue" => str_val.borrow().bright_blue().to_string(),
+                        "bright_magenta" => str_val.borrow().bright_magenta().to_string(),
+                        "bright_cyan" => str_val.borrow().bright_cyan().to_string(),
+                        "bright_white" => str_val.borrow().bright_white().to_string(),
+                        "bold" => str_val.borrow().bold().to_string(),
+                        "dim" => str_val.borrow().dimmed().to_string(),
+                        "italic" => str_val.borrow().italic().to_string(),
+                        "underline" => str_val.borrow().underline().to_string(),
+                        "blink" => str_val.borrow().blink().to_string(),
+                        "reverse" => str_val.borrow().reversed().to_string(),
+                        "strikethrough" => str_val.borrow().strikethrough().to_string(),
+                        "on_black" => str_val.borrow().on_black().to_string(),
+                        "on_red" => str_val.borrow().on_red().to_string(),
+                        "on_green" => str_val.borrow().on_green().to_string(),
+                        "on_yellow" => str_val.borrow().on_yellow().to_string(),
+                        "on_blue" => str_val.borrow().on_blue().to_string(),
+                        "on_magenta" => str_val.borrow().on_magenta().to_string(),
+                        "on_cyan" => str_val.borrow().on_cyan().to_string(),
+                        "on_white" => str_val.borrow().on_white().to_string(),
+                        _ => str_val.borrow().to_string(),
+                    };
+                    return Ok(Value::Str(Rc::new(RefCell::new(styled))));
+                }
+                unreachable!()
+            }
+        );
+
         proto
     }
 
