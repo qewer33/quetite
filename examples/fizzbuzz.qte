@@ -1,0 +1,16 @@
+# this example is a simple fizzbuzz implementation
+
+fn fizzbuzz(n) do
+    for i in 0..=n do
+        if i % 3 == 0 do
+            print("Fizz")
+        else if i % 5 == 0 do
+            print("Buzz")
+        else do
+            print(i)
+        end
+        println()
+    end
+end
+
+fizzbuzz(30)

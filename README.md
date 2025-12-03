@@ -40,7 +40,12 @@ Run the example `snake.qte`:
 cargo run examples/snake.qte
 ```
 
-Check out the examples folder to see other examples!
+Run the interactive REPL:
+```sh
+cargo run
+```
+
+Use the `help` command inside the REPL to interactively explore "The Quetite Language Reference" and "API Reference" documentations. Also check out the examples folder to see other examples!
 
 ## Example
 
@@ -93,6 +98,7 @@ end
   First-class functions; objects with optional `init()` constructor, static methods, and bound methods using `self`.
 
 ## Repository Layout
+- `examples` - example Quetite scripts
 - `src/lexer` - tokenizer
 - `src/parser` - recursive descent parser producing AST
 - `src/evaluator` - tree-walk interpreter and stdlib natives

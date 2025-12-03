@@ -24,6 +24,8 @@ You can also explore Quetite with the interactive Quetite shell (REPL). Start an
 quetite
 ```
 
+To explore this document interactively in the REPL, use the `help` command.
+
 ## Lexical Structure
 
 ### Comments

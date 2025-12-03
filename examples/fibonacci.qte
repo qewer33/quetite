@@ -1,0 +1,26 @@
+# this example showcases two different ways to compute fibonacci numbers
+# the faster iterative method
+# and slower but simpler recursive method
+
+fn iterative_fib(n) do
+    var temp
+    var fib1 = 0
+    var fib2 = 1
+
+    for i in 0..=n do
+        temp = fib2
+        fib2 = fib1 + fib2
+        fib1 = temp
+    end
+end
+
+fn recursive_fib(n) do
+    if n < 1 return n
+    return recursive_fib(n-1) + recursive_fib(n-2)
+end
+
+println("Enter the index of the fibonacci number you want to compute:")
+var n = read().parse_num()
+
+println(iterative_fib(n))
+println(recursive_fib(n))

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{borrow::Cow, cell::RefCell, rc::Rc};
 
 use crate::{
     evaluator::{
@@ -15,12 +15,15 @@ use crate::{
 };
 
 use colored::Colorize;
+use crossterm::event::{KeyCode, KeyModifiers};
 use minus::{Pager, page_all};
-use reedline::{DefaultPrompt, DefaultPromptSegment, Highlighter, Signal, StyledText};
-use termimad::{Alignment, MadSkin, StyledChar};
-use {
-    crossterm::event::{KeyCode, KeyModifiers},
-    reedline::{Emacs, Reedline, ReedlineEvent, default_emacs_keybindings},
+use reedline::{
+    DefaultPrompt, DefaultPromptSegment, Emacs, Highlighter, Prompt, Reedline, ReedlineEvent,
+    Signal, StyledText, default_emacs_keybindings,
+};
+use termimad::{
+    Alignment, MadSkin, StyledChar,
+    crossterm::style::{Attribute, Color},
 };
 
 pub struct Repl {
@@ -28,18 +31,21 @@ pub struct Repl {
     loader: LoaderPtr,
     src: Src,
     help: Option<HelpIndex>,
+    api_help: Option<HelpIndex>,
 }
 
 impl Repl {
     pub fn new() -> Self {
         let globals = Natives::get_natives();
         let help = HelpIndex::from_str(include_str!("../REFERENCE.md"));
+        let api_help = HelpIndex::from_str(include_str!("../API.md"));
 
         Self {
             globals,
             loader: Rc::new(RefCell::new(Loader::default())),
             src: Src::repl("<repl>"),
             help,
+            api_help,
         }
     }
 
@@ -50,11 +56,8 @@ impl Repl {
         let edit_mode = Box::new(Emacs::new(keybindings));
         let mut line_editor = Reedline::create()
             .with_edit_mode(edit_mode)
-            .with_highlighter(Box::new(NormalHighlighter::default()));
-        let prompt = DefaultPrompt {
-            left_prompt: DefaultPromptSegment::Basic(format!("{} ", "qte".yellow())),
-            right_prompt: DefaultPromptSegment::CurrentDateTime,
-        };
+            .with_highlighter(Box::new(QteHighlighter::default()));
+        let prompt = QtePrompt::new();
 
         // welcome text
         println!(
@@ -179,37 +182,60 @@ impl Repl {
 
         let parts: Vec<&str> = input.trim_start_matches(':').split_whitespace().collect();
 
-        if self.help.is_none() {
-            println!("help unavailable (REFERENCE.md not found)");
-            return true;
-        }
-
-        let help = self.help.as_ref().unwrap();
-
         if parts.len() == 1 {
             println!(
-                "The {} command is an interactive way to explore the {}, check out the subcommands below to get started!",
+                "The {} command lets you interactively explore the {} docs.",
                 "help".blue(),
-                "Quetite Language Reference".yellow()
+                "Quetite Language and API Reference".yellow()
             );
             println!();
-            println!("  help topics         - list reference sections with numbers");
-            println!("  help <topic|num>    - show section by name fragment or number (e.g., 2.1)");
+            println!("  help ref               - list language reference sections");
+            println!("  help ref [section|num] - read a language reference section");
+            println!("  help api               - list stdlib API reference sections");
+            println!("  help api [topic|num]   - read an stdlib API reference section");
+            println!();
+            println!("Example Usage:");
+            println!("  help ref");
+            println!("  help ref Type System");
+            println!("  help api 2.3");
             return true;
         }
 
         match parts[1].to_lowercase().as_str() {
-            "topics" => {
-                help.print_topics();
+            "ref" => {
+                if self.help.is_none() {
+                    println!("reference help unavailable (REFERENCE.md missing)");
+                    return true;
+                }
+                let h = self.help.as_ref().unwrap();
+                if parts.len() == 2 {
+                    println!("Quetite Language Reference");
+                    println!();
+                    h.print_topics();
+                } else {
+                    let term = parts[2..].join(" ");
+                    h.show_section(&term);
+                }
+                true
+            }
+            "api" => {
+                if self.api_help.is_none() {
+                    println!("API help unavailable (API.md missing)");
+                    return true;
+                }
+                let h = self.api_help.as_ref().unwrap();
+                if parts.len() == 2 {
+                    println!("Quetite API Reference");
+                    println!();
+                    h.print_topics();
+                } else {
+                    let term = parts[2..].join(" ");
+                    h.show_section(&term);
+                }
                 true
             }
             _ => {
-                let term = input
-                    .split_whitespace()
-                    .skip(1)
-                    .collect::<Vec<&str>>()
-                    .join(" ");
-                help.show_section(&term);
+                println!("unknown help topic. Use 'help ref' or 'help api'.");
                 true
             }
         }
@@ -217,13 +243,54 @@ impl Repl {
 }
 
 #[derive(Default)]
-struct NormalHighlighter;
+struct QteHighlighter;
 
-impl Highlighter for NormalHighlighter {
+impl Highlighter for QteHighlighter {
     fn highlight(&self, line: &str, _cursor: usize) -> StyledText {
         let mut text = StyledText::new();
         text.push((nu_ansi_term::Style::new(), line.to_string()));
         text
+    }
+}
+
+struct QtePrompt {
+    inner: DefaultPrompt,
+}
+
+impl QtePrompt {
+    fn new() -> Self {
+        Self {
+            inner: DefaultPrompt::new(
+                DefaultPromptSegment::Basic(format!("{} ", "qte".yellow())),
+                DefaultPromptSegment::CurrentDateTime,
+            ),
+        }
+    }
+}
+
+impl Prompt for QtePrompt {
+    fn render_prompt_left(&self) -> Cow<'_, str> {
+        self.inner.render_prompt_left()
+    }
+
+    fn render_prompt_right(&self) -> Cow<'_, str> {
+        self.inner.render_prompt_right()
+    }
+
+    fn render_prompt_indicator(&self, edit_mode: reedline::PromptEditMode) -> Cow<'_, str> {
+        self.inner.render_prompt_indicator(edit_mode)
+    }
+
+    fn render_prompt_multiline_indicator(&self) -> Cow<'_, str> {
+        Cow::Borrowed("::::: ")
+    }
+
+    fn render_prompt_history_search_indicator(
+        &self,
+        history_search: reedline::PromptHistorySearch,
+    ) -> Cow<'_, str> {
+        self.inner
+            .render_prompt_history_search_indicator(history_search)
     }
 }
 
@@ -333,8 +400,6 @@ impl HelpIndex {
 }
 
 fn make_skin() -> MadSkin {
-    use termimad::crossterm::style::{Attribute, Color};
-
     let mut skin = MadSkin::default();
     skin.paragraph.set_fg(Color::Reset);
 

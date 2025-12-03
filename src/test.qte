@@ -1,9 +1,0 @@
-var a = {
-    "amogus": 10,
-    Null: "sus"
-}
-
-var b = [10, 2]
-
-a[Null] = 10
-println(a[Null])

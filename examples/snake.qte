@@ -1,3 +1,6 @@
+# this example implements a fully functional terminal snake game
+# it takes advatnge of the Term object in the stdlib
+
 obj Pos do
     init(x, y) do
         self.x = x

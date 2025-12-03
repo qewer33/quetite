@@ -1,0 +1,29 @@
+println("Rock Paper Scissors in Quetite!")
+
+var moves = ["rock", "paper", "scissors"]
+var beats = {
+    "rock": "scissors",
+    "paper": "rock",
+    "scissors": "paper"
+}
+
+while true do
+    print("\nMake your move: ")
+    var user = read()
+
+    if user == "q" break
+    if !moves.contains(user) do
+        print("Invalid move! Valid moves are: ")
+        println(moves)
+        continue
+    end
+
+    var computer = Rand.list(moves)
+
+    println("\nYour move: " + user)
+    println("Computer's move: " + computer)
+
+    if beats[computer] == user println("\nComputer wins!")
+    if beats[user] == computer println("\nYou win!")
+    if user == computer println("\nIt's a draw!")
+end
